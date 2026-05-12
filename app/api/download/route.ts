@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
         where: { batchId },
         orderBy: { createdAt: 'asc' },
       })
-      const rows = ['original,normalizado', ...comunas.map((c) => `"${c.original}","${c.normalized}"`)]
+      const rows = ['original,normalizado', ...comunas.map((c: { original: string; normalized: string }) => `"${c.original}","${c.normalized}"`)]
       return new NextResponse(rows.join('\n'), {
         headers: {
           'Content-Type': 'text/csv; charset=utf-8',
