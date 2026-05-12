@@ -1,13 +1,21 @@
 'use client'
 
+/**
+ * StatsPanel.tsx
+ * Panel de tarjetas con las estadísticas del proceso de normalización:
+ * registros ingresados, únicos, duplicados eliminados y normalizados.
+ */
+
 import { FileText, CheckCircle, Copy, Pencil } from 'lucide-react'
 import type { ProcessResponse } from './FileUpload'
 
 interface StatsPanelProps {
+  /** Datos del batch procesado con las estadísticas */
   data: ProcessResponse
 }
 
 export default function StatsPanel({ data }: StatsPanelProps) {
+  // Definición de cada tarjeta: etiqueta, valor, ícono y colores
   const cards = [
     {
       label: 'Registros ingresados',
@@ -44,6 +52,7 @@ export default function StatsPanel({ data }: StatsPanelProps) {
       {cards.map((card) => {
         const Icon = card.icon
         return (
+          // Tarjeta individual con ícono coloreado y valor numérico
           <div key={card.label} className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4">
             <div className={`${card.bg} p-3 rounded-lg`}>
               <Icon className={`w-5 h-5 ${card.color}`} />

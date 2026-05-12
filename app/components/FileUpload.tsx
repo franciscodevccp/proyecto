@@ -1,13 +1,21 @@
 'use client'
 
+/**
+ * FileUpload.tsx
+ * Componente de carga de archivos con soporte de drag & drop.
+ * Envía el archivo al endpoint /api/process y notifica al padre con el resultado.
+ */
+
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, FileText, Loader2 } from 'lucide-react'
 
 interface FileUploadProps {
+  /** Función llamada cuando el procesamiento termina exitosamente */
   onResult: (data: ProcessResponse) => void
 }
 
+/** Respuesta del endpoint /api/process */
 export interface ProcessResponse {
   batchId: string
   totalInput: number
@@ -22,6 +30,10 @@ export default function FileUpload({ onResult }: FileUploadProps) {
   const [error, setError] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
 
+  /**
+   * Maneja la caída (drop) o selección del archivo.
+   * Envía el FormData al API y propaga el resultado al componente padre.
+   */
   const onDrop = useCallback(
     async (accepted: File[]) => {
       const file = accepted[0]
@@ -32,6 +44,7 @@ export default function FileUpload({ onResult }: FileUploadProps) {
       setLoading(true)
 
       try {
+        // Construir el formulario multipart con el archivo
         const form = new FormData()
         form.append('file', file)
 
@@ -41,7 +54,7 @@ export default function FileUpload({ onResult }: FileUploadProps) {
           throw new Error(err.error ?? 'Error procesando el archivo')
         }
         const data: ProcessResponse = await res.json()
-        onResult(data)
+        onResult(data) // notificar al padre con las estadísticas
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Error desconocido')
       } finally {
@@ -51,6 +64,7 @@ export default function FileUpload({ onResult }: FileUploadProps) {
     [onResult],
   )
 
+  // Configurar react-dropzone: solo acepta archivos .txt, máximo 1 archivo
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'text/plain': ['.txt'] },
@@ -60,6 +74,7 @@ export default function FileUpload({ onResult }: FileUploadProps) {
 
   return (
     <div className="w-full">
+      {/* Zona de drop con estilos dinámicos según el estado */}
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors
@@ -68,6 +83,7 @@ export default function FileUpload({ onResult }: FileUploadProps) {
       >
         <input {...getInputProps()} />
         <div className="flex flex-col items-center gap-3">
+          {/* Ícono: spinner durante carga, flecha de subida en reposo */}
           {loading ? (
             <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
           ) : (
@@ -95,6 +111,7 @@ export default function FileUpload({ onResult }: FileUploadProps) {
           )}
         </div>
       </div>
+      {/* Mensaje de error en caso de fallo en el procesamiento */}
       {error && (
         <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
           {error}
