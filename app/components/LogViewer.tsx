@@ -30,6 +30,7 @@ const BADGE: Record<string, string> = {
   normalized: 'bg-blue-100 text-blue-700',
   duplicate: 'bg-orange-100 text-orange-700',
   unchanged: 'bg-gray-100 text-gray-500',
+  corrected: 'bg-purple-100 text-purple-700',
 }
 
 /** Etiquetas legibles para cada tipo de cambio */
@@ -37,6 +38,7 @@ const LABEL: Record<string, string> = {
   normalized: 'Normalizado',
   duplicate: 'Duplicado',
   unchanged: 'Sin cambio',
+  corrected: 'Corregido',
 }
 
 export default function LogViewer({ batchId }: LogViewerProps) {
@@ -71,7 +73,7 @@ export default function LogViewer({ batchId }: LogViewerProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
           {/* Botones de filtro: Todos, Normalizado, Duplicado, Sin cambio */}
-          {['all', 'normalized', 'duplicate', 'unchanged'].map((f) => (
+          {['all', 'normalized', 'corrected', 'duplicate', 'unchanged'].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}

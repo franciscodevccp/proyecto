@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       )
 
       // Pie de página con resumen estadístico
-      const footer = `\n${'='.repeat(60)}\nTotal entrada: ${batch.totalInput} | Únicos: ${batch.totalOutput} | Duplicados: ${batch.duplicates} | Normalizados: ${batch.changes}`
+      const footer = `\n${'='.repeat(60)}\nTotal entrada: ${batch.totalInput} | Unicos: ${batch.totalOutput} | Duplicados: ${batch.duplicates} | Normalizados: ${batch.changes}`
 
       // BOM UTF-8 para que el bloc de notas y Excel lean correctamente los acentos
       const bom = '﻿'
