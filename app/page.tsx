@@ -1,65 +1,95 @@
-import Image from "next/image";
+'use client'
+
+import { useState } from 'react'
+import { Toaster, toast } from 'react-hot-toast'
+import { Database, Table, ScrollText } from 'lucide-react'
+import FileUpload, { type ProcessResponse } from './components/FileUpload'
+import StatsPanel from './components/StatsPanel'
+import DataTable from './components/DataTable'
+import LogViewer from './components/LogViewer'
+
+type Tab = 'datos' | 'log'
 
 export default function Home() {
+  const [result, setResult] = useState<ProcessResponse | null>(null)
+  const [tab, setTab] = useState<Tab>('datos')
+
+  const handleResult = (data: ProcessResponse) => {
+    setResult(data)
+    setTab('datos')
+    toast.success(`Archivo procesado: ${data.totalOutput} comunas únicas`)
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="min-h-screen bg-gray-50">
+      <Toaster position="top-right" />
+
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-5xl mx-auto px-6 py-5 flex items-center gap-3">
+          <Database className="w-7 h-7 text-blue-600" />
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">COMUNAS_NORM</h1>
+            <p className="text-xs text-gray-400">Normalización de datasets de comunas chilenas</p>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        {/* Upload */}
+        <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-2">
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+            Cargar archivo
+          </h2>
+          <p className="text-sm text-gray-400">
+            Sube un archivo <code className="bg-gray-100 px-1 rounded">.txt</code> con un nombre de
+            comuna por línea
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          <div className="pt-2">
+            <FileUpload onResult={handleResult} />
+          </div>
+        </section>
+
+        {/* Results */}
+        {result && (
+          <>
+            <StatsPanel data={result} />
+
+            {/* Tabs */}
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="flex border-b border-gray-200">
+                <button
+                  onClick={() => setTab('datos')}
+                  className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors
+                    ${tab === 'datos' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <Table className="w-4 h-4" />
+                  Datos normalizados
+                </button>
+                <button
+                  onClick={() => setTab('log')}
+                  className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors
+                    ${tab === 'log' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <ScrollText className="w-4 h-4" />
+                  Log de cambios
+                </button>
+              </div>
+              <div className="p-6">
+                {tab === 'datos' && <DataTable batchId={result.batchId} />}
+                {tab === 'log' && <LogViewer batchId={result.batchId} />}
+              </div>
+            </div>
+          </>
+        )}
+
+        {!result && (
+          <div className="text-center py-16 text-gray-400">
+            <Database className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">Carga un archivo para ver los resultados</p>
+          </div>
+        )}
       </main>
     </div>
-  );
+  )
 }

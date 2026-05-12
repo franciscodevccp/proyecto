@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
@@ -10,4 +5,37 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+model Batch {
+  id          String     @id @default(cuid())
+  createdAt   DateTime   @default(now())
+  fileName    String
+  totalInput  Int
+  totalOutput Int
+  duplicates  Int
+  changes     Int
+  comunas     Comuna[]
+  logs        LogEntry[]
+}
+
+model Comuna {
+  id         String   @id @default(cuid())
+  original   String
+  normalized String
+  batchId    String
+  batch      Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model LogEntry {
+  id         String   @id @default(cuid())
+  batchId    String
+  batch      Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  lineNumber Int
+  original   String
+  normalized String
+  changeType String
+  detail     String?
+  createdAt  DateTime @default(now())
 }
