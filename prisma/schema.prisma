@@ -8,15 +8,17 @@ datasource db {
 }
 
 model Batch {
-  id          String     @id @default(cuid())
-  createdAt   DateTime   @default(now())
-  fileName    String
-  totalInput  Int
-  totalOutput Int
-  duplicates  Int
-  changes     Int
-  comunas     Comuna[]
-  logs        LogEntry[]
+  id            String     @id @default(cuid())
+  createdAt     DateTime   @default(now())
+  fileName      String
+  totalInput    Int
+  totalOutput   Int
+  duplicates    Int
+  changes       Int
+  qualityBefore Float?     // Score de calidad del dataset antes de normalizar (0-100)
+  qualityAfter  Float?     // Score de calidad del dataset despues de normalizar (0-100)
+  comunas       Comuna[]
+  logs          LogEntry[]
 }
 
 model Comuna {

@@ -1,11 +1,13 @@
 /**
  * normalizer.ts
- * Logica de normalizacion de nombres de comunas chilenas.
- * Aplica limpieza de texto, eliminacion de tildes/enes,
- * formato Title Case, deteccion de duplicados y correccion ortografica opcional.
+ * Pipeline de normalizacion de texto para datasets de comunas (y texto en general).
+ * Recibe lineas ya parseadas y aplica las reglas ETL configuradas por el usuario.
+ * Cada regla puede activarse o desactivarse individualmente via ETLRuleSet.
  */
 
 import { findBestComuna } from './comunas-chile'
+import { type ETLRuleSet, DEFAULT_RULESET, resolveRuleSet } from './etl-rules'
+import { calculateQuality, calculateQualityAfter, type QualityBreakdown } from './quality-score'
 
 /** Resultado individual de normalizar una linea del archivo */
 export interface NormalizeResult {
@@ -25,70 +27,106 @@ export interface ProcessResult {
   duplicates: number
   changes: number
   corrections: number
+  /** Score de calidad del dataset ANTES de normalizar */
+  qualityBefore: QualityBreakdown
+  /** Score de calidad del dataset DESPUES de normalizar */
+  qualityAfter: QualityBreakdown
 }
 
 /**
- * Normaliza un texto aplicando los pasos del pipeline:
- * 1. Elimina espacios al inicio/fin y colapsa espacios multiples
- * 2. Descompone caracteres Unicode (NFD) y elimina diacriticos (tildes, dieresis, etc.)
- * 3. Convierte a minusculas y aplica Title Case (primera letra de cada palabra en mayuscula)
- */
-function normalizeText(text: string): string {
-  return text
-    .trim()
-    .replace(/\s+/g, ' ')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-/**
- * Procesa el contenido de un archivo .txt de comunas.
- * Itera linea por linea, normaliza cada nombre, detecta duplicados
- * y opcionalmente aplica correccion ortografica por fuzzy matching.
+ * Aplica las reglas de normalizacion habilitadas a un texto.
+ * Solo se ejecutan las transformaciones cuya regla este activa en el ruleset.
  *
- * @param content - Texto completo del archivo subido
- * @param options.correct - Si true, intenta corregir typos contra la lista oficial INE
- * @returns Objeto con comunas unicas normalizadas, log de cambios y estadisticas
+ * @param text - Texto crudo a normalizar
+ * @param rules - Conjunto de reglas activas
+ * @returns Texto normalizado segun las reglas
+ */
+function normalizeText(text: string, rules: ETLRuleSet): string {
+  let result = text
+
+  // Regla: eliminar espacios al inicio y al final
+  if (rules['trim']) {
+    result = result.trim()
+  }
+
+  // Regla: colapsar multiples espacios en uno
+  if (rules['collapseSpaces']) {
+    result = result.replace(/\s+/g, ' ')
+  }
+
+  // Regla: eliminar tildes y diacriticos (NFD + rango Unicode)
+  if (rules['removeAccents']) {
+    result = result
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+  }
+
+  // Regla: aplicar formato Title Case
+  if (rules['titleCase']) {
+    result = result.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+
+  return result
+}
+
+/**
+ * Procesa un array de lineas ya parseadas aplicando el pipeline ETL completo.
+ * Calcula el quality score antes y despues, aplica las reglas configuradas,
+ * detecta duplicados y opcionalmente corrige typos por fuzzy matching.
+ *
+ * @param lines - Array de strings ya extraidos por el parser
+ * @param options.rules - Reglas ETL a aplicar (default: DEFAULT_RULESET)
+ * @param options.correct - Alias para activar fuzzyCorrect (compatibilidad v1)
+ * @returns ProcessResult con comunas, logs, estadisticas y quality scores
  */
 export function processFile(
-  content: string,
-  options: { correct?: boolean } = {},
+  lines: string[],
+  options: {
+    rules?: Partial<ETLRuleSet>
+    correct?: boolean
+  } = {},
 ): ProcessResult {
-  const { correct = false } = options
+  // Resolver el ruleset: combinar defaults con las opciones del usuario
+  const baseRules = resolveRuleSet(options.rules ?? DEFAULT_RULESET)
 
-  // Separa el contenido en lineas, descartando lineas vacias
-  const lines = content
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
+  // El parametro 'correct' de v1 activa la regla fuzzyCorrect
+  if (options.correct) {
+    baseRules['fuzzyCorrect'] = true
+  }
+
+  // Calcular calidad del dataset ANTES de normalizar
+  const qualityBefore = calculateQuality(lines)
 
   const logs: NormalizeResult[] = []
 
-  // Mapa para detectar duplicados: clave normalizada → numero de linea original
+  // Mapa para detectar duplicados: clave normalizada → numero de linea
   const seen = new Map<string, number>()
-
   const comunas: { original: string; normalized: string }[] = []
 
   let changes = 0       // registros con cambio de formato
-  let duplicates = 0    // registros descartados por duplicado
+  let duplicates = 0    // registros descartados por ser duplicados
   let corrections = 0   // registros corregidos por fuzzy matching
 
   lines.forEach((line, idx) => {
-    let normalized = normalizeText(line)
+    // Aplicar reglas de normalizacion de texto
+    let normalized = normalizeText(line, baseRules)
     let changeType: NormalizeResult['changeType'] = normalized === line ? 'unchanged' : 'normalized'
     const details: string[] = []
 
-    // Detectar que tipos de cambios de formato se aplicaron
-    if (line.trim() !== line) details.push('espacios eliminados')
-    if (/\s{2,}/.test(line)) details.push('espacios multiples normalizados')
-    if (/[áéíóúüñÁÉÍÓÚÜÑ]/.test(line)) details.push('tildes/enes removidas')
-    if (line.trim() !== normalized && line.trim().toLowerCase() !== normalized.toLowerCase())
+    // Registrar que tipos de cambios se aplicaron
+    if (baseRules['trim'] && line !== line.trim()) details.push('espacios eliminados')
+    if (baseRules['collapseSpaces'] && /\s{2,}/.test(line)) details.push('espacios multiples normalizados')
+    if (baseRules['removeAccents'] && /[áéíóúüñÁÉÍÓÚÜÑ]/.test(line)) details.push('tildes/enes removidas')
+    if (
+      baseRules['titleCase'] &&
+      line.trim() !== normalized &&
+      line.trim().toLowerCase() !== normalized.toLowerCase()
+    ) {
       details.push('capitalizacion normalizada')
+    }
 
-    // Etapa opcional: correccion ortografica contra lista oficial INE
-    if (correct) {
+    // Regla: correccion ortografica por fuzzy matching contra lista INE
+    if (baseRules['fuzzyCorrect']) {
       const corrected = findBestComuna(normalized)
       if (corrected !== null && corrected !== normalized) {
         details.push(`typo corregido: "${normalized}" → "${corrected}"`)
@@ -98,11 +136,16 @@ export function processFile(
       }
     }
 
-    // Clave en minusculas para comparacion insensible a mayusculas
+    // Regla: eliminar lineas vacias post-normalizacion
+    if (baseRules['removeEmpty'] && normalized.trim().length === 0) {
+      return // descartar linea
+    }
+
+    // Clave para comparacion de duplicados: minusculas sin tildes
     const key = normalized.toLowerCase()
 
-    // Si ya existe una version normalizada igual, se marca como duplicado
-    if (seen.has(key)) {
+    // Regla: deduplicar
+    if (baseRules['deduplicate'] && seen.has(key)) {
       duplicates++
       logs.push({
         original: line,
@@ -129,6 +172,9 @@ export function processFile(
     comunas.push({ original: line, normalized })
   })
 
+  // Calcular calidad del dataset DESPUES de normalizar
+  const qualityAfter = calculateQualityAfter(comunas)
+
   return {
     comunas,
     logs,
@@ -137,5 +183,7 @@ export function processFile(
     duplicates,
     changes,
     corrections,
+    qualityBefore,
+    qualityAfter,
   }
 }
