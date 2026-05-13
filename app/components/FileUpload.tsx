@@ -2,17 +2,22 @@
 
 /**
  * FileUpload.tsx
- * Componente de carga de archivos con soporte de drag & drop.
- * Envia el archivo al endpoint /api/process y notifica al padre con el resultado.
- * Incluye opcion de correccion ortografica por fuzzy matching contra lista INE.
+ * Carga de archivos con drag & drop.
+ * Soporta .txt, .csv y .tsv. Si hay multiples columnas muestra ColumnSelector.
+ * Incluye: RulesConfig (reglas ETL), toggle DryRun (preview sin guardar)
+ * y checkbox de correccion ortografica.
  */
 
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Upload, FileText, Loader2, SpellCheck } from 'lucide-react'
+import { Upload, FileText, Loader2, SpellCheck, Eye } from 'lucide-react'
+import { parseContent, type ParseResult } from '../lib/parser'
+import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
+import type { QualityBreakdown } from '../lib/quality-score'
+import ColumnSelector from './ColumnSelector'
+import RulesConfig from './RulesConfig'
 
 interface FileUploadProps {
-  /** Funcion llamada cuando el procesamiento termina exitosamente */
   onResult: (data: ProcessResponse) => void
 }
 
@@ -26,63 +31,101 @@ export interface ProcessResponse {
   corrections: number
   correctionMode: boolean
   fileName: string
+  qualityBefore: QualityBreakdown | null
+  qualityAfter: QualityBreakdown | null
+  dryRun?: boolean
+  preview?: { original: string; normalized: string; changeType: string }[]
 }
 
 export default function FileUpload({ onResult }: FileUploadProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [fileName, setFileName] = useState<string | null>(null)
-  const [withCorrection, setWithCorrection] = useState(false)
+
+  // Estado del archivo seleccionado antes de enviar
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [parsed, setParsed] = useState<ParseResult | null>(null)
+  const [selectedColumn, setSelectedColumn] = useState(0)
+
+  // Opciones del pipeline
+  const [rules, setRules] = useState<ETLRuleSet>(DEFAULT_RULESET)
+  const [dryRun, setDryRun] = useState(false)
 
   /**
-   * Maneja la caida (drop) o seleccion del archivo.
-   * Envia el FormData al API y propaga el resultado al componente padre.
+   * Al soltar o seleccionar un archivo, se lee y parsea localmente
+   * para detectar columnas antes de enviarlo al servidor.
    */
-  const onDrop = useCallback(
-    async (accepted: File[]) => {
-      const file = accepted[0]
-      if (!file) return
+  const onDrop = useCallback(async (accepted: File[]) => {
+    const file = accepted[0]
+    if (!file) return
+    setError(null)
+    setPendingFile(file)
+    setSelectedColumn(0)
 
-      setFileName(file.name)
-      setError(null)
-      setLoading(true)
+    // Leer el archivo en el cliente para detectar columnas (solo los primeros 50 KB)
+    const slice = file.slice(0, 50 * 1024)
+    const text = await slice.text()
+    const result = parseContent(text, { columnIndex: 0 })
+    setParsed(result)
+  }, [])
 
-      try {
-        const form = new FormData()
-        form.append('file', file)
-        // Enviar la opcion de correccion ortografica al servidor
-        form.append('correct', withCorrection ? 'true' : 'false')
+  /** Envia el archivo al servidor con todos los parametros configurados */
+  async function handleSubmit() {
+    if (!pendingFile) return
+    setLoading(true)
+    setError(null)
 
-        const res = await fetch('/api/process', { method: 'POST', body: form })
-        if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error ?? 'Error procesando el archivo')
-        }
-        const data: ProcessResponse = await res.json()
-        onResult(data)
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Error desconocido')
-      } finally {
-        setLoading(false)
+    try {
+      const form = new FormData()
+      form.append('file', pendingFile)
+      form.append('columnIndex', String(selectedColumn))
+      form.append('correct', String(rules['fuzzyCorrect'] ?? false))
+      form.append('dryRun', String(dryRun))
+      form.append('rules', JSON.stringify(rules))
+
+      const res = await fetch('/api/process', { method: 'POST', body: form })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? 'Error procesando el archivo')
       }
-    },
-    [onResult, withCorrection],
-  )
+      const data: ProcessResponse = await res.json()
+      onResult(data)
+
+      // Limpiar estado si no es dryRun (si es dryRun se mantiene para poder confirmar)
+      if (!dryRun) {
+        setPendingFile(null)
+        setParsed(null)
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error desconocido')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'text/plain': ['.txt'] },
+    accept: {
+      'text/plain': ['.txt'],
+      'text/csv': ['.csv'],
+      'text/tab-separated-values': ['.tsv'],
+    },
     maxFiles: 1,
     disabled: loading,
   })
 
+  // Mostrar selector de columna solo si hay mas de una columna detectada
+  const multiColumn = parsed && parsed.columns.length > 1
+
   return (
     <div className="w-full space-y-3">
-      {/* Zona de drop con estilos dinamicos segun el estado */}
+      {/* Zona de drop */}
       <div
         {...getRootProps()}
-        className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors
-          ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'}
+        className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
+          ${isDragActive
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950'
+            : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+          }
           ${loading ? 'opacity-60 cursor-not-allowed' : ''}`}
       >
         <input {...getInputProps()} />
@@ -90,52 +133,97 @@ export default function FileUpload({ onResult }: FileUploadProps) {
           {loading ? (
             <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
           ) : (
-            <Upload className="w-10 h-10 text-gray-400" />
+            <Upload className="w-10 h-10 text-gray-400 dark:text-gray-500" />
           )}
           <div>
             {loading ? (
-              <p className="text-blue-600 font-medium">Procesando {fileName}…</p>
+              <p className="text-blue-600 dark:text-blue-400 font-medium">Procesando…</p>
             ) : isDragActive ? (
-              <p className="text-blue-600 font-medium">Suelta el archivo aqui</p>
+              <p className="text-blue-600 dark:text-blue-400 font-medium">Suelta el archivo aqui</p>
             ) : (
               <>
-                <p className="font-medium text-gray-700">
-                  Arrastra tu archivo <span className="text-blue-600">.txt</span> aqui
+                <p className="font-medium text-gray-700 dark:text-gray-300">
+                  Arrastra tu archivo aqui
                 </p>
-                <p className="text-sm text-gray-400 mt-1">o haz clic para seleccionarlo</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                  Acepta{' '}
+                  <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.txt</code>{' '}
+                  <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.csv</code>{' '}
+                  <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.tsv</code>
+                  {' '}— o haz clic para seleccionar
+                </p>
               </>
             )}
           </div>
-          {fileName && !loading && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+          {pendingFile && !loading && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
               <FileText className="w-4 h-4" />
-              {fileName}
+              {pendingFile.name}
+              {parsed && (
+                <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+                  {parsed.format.toUpperCase()}
+                </span>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Opcion de correccion ortografica (separada del flujo principal) */}
-      <label className="flex items-center gap-3 px-4 py-3 bg-purple-50 border border-purple-200 rounded-xl cursor-pointer hover:bg-purple-100 transition-colors select-none">
-        <input
-          type="checkbox"
-          checked={withCorrection}
-          onChange={(e) => setWithCorrection(e.target.checked)}
-          disabled={loading}
-          className="w-4 h-4 accent-purple-600"
+      {/* Selector de columna (solo para CSV/TSV con multiples columnas) */}
+      {multiColumn && parsed && (
+        <ColumnSelector
+          columns={parsed.columns}
+          preview={parsed.preview}
+          selected={selectedColumn}
+          onChange={setSelectedColumn}
         />
-        <SpellCheck className="w-4 h-4 text-purple-600 shrink-0" />
-        <div>
-          <p className="text-sm font-medium text-purple-800">Correccion ortografica (experimental)</p>
-          <p className="text-xs text-purple-600">
-            Corrige typos comparando contra las 346 comunas oficiales del INE (fuzzy matching)
-          </p>
-        </div>
-      </label>
+      )}
 
-      {/* Mensaje de error en caso de fallo en el procesamiento */}
+      {/* Configurador de reglas ETL */}
+      <RulesConfig value={rules} onChange={setRules} />
+
+      {/* Opciones adicionales */}
+      <div className="flex flex-wrap gap-3">
+        {/* Toggle correccion ortografica */}
+        <label className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors select-none text-sm">
+          <input
+            type="checkbox"
+            checked={rules['fuzzyCorrect'] ?? false}
+            onChange={(e) => setRules({ ...rules, fuzzyCorrect: e.target.checked })}
+            disabled={loading}
+            className="w-3.5 h-3.5 accent-purple-600"
+          />
+          <SpellCheck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+          <span className="text-purple-800 dark:text-purple-200 font-medium">Correccion ortografica</span>
+        </label>
+
+        {/* Toggle dry run */}
+        <label className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded-lg cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors select-none text-sm">
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={(e) => setDryRun(e.target.checked)}
+            disabled={loading}
+            className="w-3.5 h-3.5 accent-amber-600"
+          />
+          <Eye className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+          <span className="text-amber-800 dark:text-amber-200 font-medium">Vista previa (sin guardar)</span>
+        </label>
+      </div>
+
+      {/* Boton de procesar (solo visible cuando hay archivo seleccionado) */}
+      {pendingFile && !loading && (
+        <button
+          onClick={handleSubmit}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors"
+        >
+          {dryRun ? 'Ver preview' : 'Procesar archivo'}
+        </button>
+      )}
+
+      {/* Error */}
       {error && (
-        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+        <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2">
           {error}
         </p>
       )}

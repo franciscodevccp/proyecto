@@ -27,10 +27,10 @@ interface LogViewerProps {
 
 /** Clases CSS para cada badge de tipo de cambio */
 const BADGE: Record<string, string> = {
-  normalized: 'bg-blue-100 text-blue-700',
-  duplicate: 'bg-orange-100 text-orange-700',
-  unchanged: 'bg-gray-100 text-gray-500',
-  corrected: 'bg-purple-100 text-purple-700',
+  normalized: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  duplicate: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  unchanged: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+  corrected: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
 }
 
 /** Etiquetas legibles para cada tipo de cambio */
@@ -64,7 +64,7 @@ export default function LogViewer({ batchId }: LogViewerProps) {
   }
 
   if (loading) {
-    return <div className="text-center py-10 text-gray-500">Cargando log…</div>
+    return <div className="text-center py-10 text-gray-500 dark:text-gray-400">Cargando log…</div>
   }
 
   return (
@@ -78,7 +78,10 @@ export default function LogViewer({ batchId }: LogViewerProps) {
               key={f}
               onClick={() => setFilter(f)}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors
-                ${filter === f ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                ${filter === f
+                  ? 'bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                }`}
             >
               {f === 'all' ? 'Todos' : LABEL[f]}
               {/* Contador de entradas para cada filtro */}
@@ -90,7 +93,7 @@ export default function LogViewer({ batchId }: LogViewerProps) {
         </div>
         <button
           onClick={downloadLog}
-          className="flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg transition-colors"
+          className="flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-900 dark:bg-gray-700 dark:hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors"
         >
           <Download className="w-4 h-4" />
           Descargar log
@@ -98,33 +101,33 @@ export default function LogViewer({ batchId }: LogViewerProps) {
       </div>
 
       {/* Lista de entradas del log con scroll vertical */}
-      <div className="rounded-xl border border-gray-200 overflow-hidden">
-        <div className="max-h-[500px] overflow-y-auto divide-y divide-gray-100">
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="max-h-[500px] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
           {filtered.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">Sin entradas</div>
+            <div className="text-center py-10 text-gray-400 dark:text-gray-500">Sin entradas</div>
           ) : (
             filtered.map((entry) => (
-              <div key={entry.id} className="px-4 py-3 hover:bg-gray-50 flex items-start gap-3">
+              <div key={entry.id} className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-start gap-3">
                 {/* Número de línea original en el archivo */}
-                <span className="text-xs text-gray-400 w-8 shrink-0 pt-0.5">#{entry.lineNumber}</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 w-8 shrink-0 pt-0.5">#{entry.lineNumber}</span>
                 {/* Badge con el tipo de cambio */}
                 <span
-                  className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${BADGE[entry.changeType] ?? 'bg-gray-100 text-gray-500'}`}
+                  className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${BADGE[entry.changeType] ?? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}
                 >
                   {LABEL[entry.changeType] ?? entry.changeType}
                 </span>
                 <div className="min-w-0 flex-1 text-sm">
                   {/* Valor original → valor normalizado (solo si hubo cambio) */}
-                  <span className="text-gray-400 font-mono">{entry.original}</span>
+                  <span className="text-gray-400 dark:text-gray-500 font-mono">{entry.original}</span>
                   {entry.changeType !== 'unchanged' && (
                     <>
-                      <span className="mx-2 text-gray-300">→</span>
-                      <span className="text-gray-800 font-medium">{entry.normalized}</span>
+                      <span className="mx-2 text-gray-300 dark:text-gray-600">→</span>
+                      <span className="text-gray-800 dark:text-gray-100 font-medium">{entry.normalized}</span>
                     </>
                   )}
                   {/* Detalle del cambio (ej: "tildes removidas, capitalización normalizada") */}
                   {entry.detail && (
-                    <span className="ml-2 text-xs text-gray-400">({entry.detail})</span>
+                    <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">({entry.detail})</span>
                   )}
                 </div>
               </div>
