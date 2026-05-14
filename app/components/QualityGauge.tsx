@@ -24,20 +24,6 @@ const CX = 90      // centro X del SVG
 const CY = 90      // centro Y del SVG
 const STROKE = 14  // grosor del arco
 
-/**
- * Convierte un score (0-100) en coordenadas de arco SVG.
- * El gauge es un semicirculo de 180 grados (izquierda a derecha).
- */
-function scoreToPath(score: number): string {
-  // El arco va de 180° (izquierda) a 0° (derecha) pasando por arriba
-  const angle = (score / 100) * 180 // 0-180 grados
-  const rad = ((180 - angle) * Math.PI) / 180
-  const x = CX + R * Math.cos(rad)
-  const y = CY - R * Math.sin(rad)
-  const largeArc = angle > 180 ? 1 : 0
-  return `M ${CX - R} ${CY} A ${R} ${R} 0 ${largeArc} 1 ${x} ${y}`
-}
-
 /** Devuelve el color segun el score */
 function scoreColor(score: number): string {
   if (score >= 70) return '#22c55e'  // verde

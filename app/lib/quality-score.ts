@@ -119,7 +119,7 @@ export function calculateQuality(lines: string[]): QualityBreakdown {
       .trim()
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\u0300-\u036f]/g, '')
     if (seen.has(key)) {
       duplicates++
     } else {

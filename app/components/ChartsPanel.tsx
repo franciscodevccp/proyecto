@@ -1,18 +1,8 @@
 'use client'
 
-/**
- * ChartsPanel.tsx
- * Panel de graficos interactivos con Recharts.
- * Muestra 2 visualizaciones del batch actual:
- *   1. Pie chart — distribucion de tipos de cambio
- *   2. Bar chart — registros por categoria
- * Si hay historial de mas de 2 batches, agrega un area chart de tendencia.
- */
-
 import {
   PieChart, Pie, Cell, Tooltip,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  AreaChart, Area,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
   ResponsiveContainer,
 } from 'recharts'
 import { useEffect, useState } from 'react'
@@ -22,7 +12,6 @@ interface ChartsPanelProps {
   data: ProcessResponse
 }
 
-/** Colores del pie chart para cada tipo de cambio */
 const PIE_COLORS = {
   Normalizados: '#3b82f6',
   Duplicados:   '#f97316',
@@ -30,7 +19,6 @@ const PIE_COLORS = {
   Corregidos:   '#a855f7',
 }
 
-/** Estructura minima de batch para el grafico de tendencia historica */
 interface BatchTrend {
   fileName: string
   qualityBefore: number | null
@@ -40,15 +28,14 @@ interface BatchTrend {
 export default function ChartsPanel({ data }: ChartsPanelProps) {
   const [history, setHistory] = useState<BatchTrend[]>([])
 
-  // Cargar historial para el grafico de tendencia
   useEffect(() => {
     fetch('/api/batches')
       .then((r) => r.json())
       .then((d) => setHistory(d.batches ?? []))
-      .catch(() => {/* ignorar errores de red */})
+      .catch(() => {})
   }, [data.batchId])
 
-  // ── Datos para el Pie chart ────────────────────────────────────────
+  // ── 1. Donut chart ────────────────────────────────────────────────
   const unchanged = data.totalOutput - data.changes - (data.corrections ?? 0)
   const pieData = [
     { name: 'Normalizados', value: data.changes },
@@ -57,15 +44,15 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
     ...(data.corrections > 0 ? [{ name: 'Corregidos', value: data.corrections }] : []),
   ].filter((d) => d.value > 0)
 
-  // ── Datos para el Bar chart ────────────────────────────────────────
-  const barData = [
-    { label: 'Entrada',      value: data.totalInput,  fill: '#93c5fd' },
-    { label: 'Unicos',       value: data.totalOutput, fill: '#3b82f6' },
-    { label: 'Duplicados',   value: data.duplicates,  fill: '#f97316' },
-    { label: 'Normalizados', value: data.changes,     fill: '#a855f7' },
-  ]
+  // ── 2. Funnel de reduccion ────────────────────────────────────────
+  const reductionPct = data.totalInput > 0
+    ? Math.round((1 - data.totalOutput / data.totalInput) * 100)
+    : 0
+  const uniquesPct = data.totalInput > 0
+    ? (data.totalOutput / data.totalInput) * 100
+    : 100
 
-  // ── Datos para el Area chart historico ────────────────────────────
+  // ── 3. Area chart historico ───────────────────────────────────────
   const trendData = history
     .filter((b) => b.qualityBefore !== null)
     .map((b) => ({
@@ -79,53 +66,86 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
   return (
     <div className="space-y-4">
 
-      {/* 1. Pie chart — distribucion de cambios */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-        <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Distribucion de cambios</p>
-        <ResponsiveContainer width="100%" height={180}>
-          <PieChart>
-            <Pie
-              data={pieData}
-              cx="50%"
-              cy="50%"
-              innerRadius={45}
-              outerRadius={70}
-              paddingAngle={3}
-              dataKey="value"
-              label={false}
-              labelLine={false}
-            >
-              {pieData.map((entry, i) => (
-                <Cell
-                  key={i}
-                  fill={PIE_COLORS[entry.name as keyof typeof PIE_COLORS] ?? '#6b7280'}
+      {/* Fila superior: donut + funnel lado a lado */}
+      <div className="grid grid-cols-2 gap-4">
+
+        {/* 1. Donut chart */}
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Distribucion de cambios</p>
+          <ResponsiveContainer width="100%" height={160}>
+            <PieChart>
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="50%"
+                innerRadius={42}
+                outerRadius={65}
+                paddingAngle={3}
+                dataKey="value"
+                label={false}
+                labelLine={false}
+              >
+                {pieData.map((entry, i) => (
+                  <Cell
+                    key={i}
+                    fill={PIE_COLORS[entry.name as keyof typeof PIE_COLORS] ?? '#6b7280'}
+                  />
+                ))}
+              </Pie>
+              <Tooltip formatter={(v) => [v, 'registros']} />
+            </PieChart>
+          </ResponsiveContainer>
+          {/* Leyenda */}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+            {pieData.map((entry) => (
+              <div key={entry.name} className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: PIE_COLORS[entry.name as keyof typeof PIE_COLORS] ?? '#6b7280' }}
                 />
-              ))}
-            </Pie>
-            <Tooltip formatter={(v) => [v, 'registros']} />
-          </PieChart>
-        </ResponsiveContainer>
+                {entry.name}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 2. Funnel de reduccion */}
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Reduccion de registros</p>
+          <div className="space-y-3 mt-2">
+            {/* Barra Entrada */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>Entrada</span>
+                <span className="font-medium text-gray-700 dark:text-gray-200">
+                  {data.totalInput.toLocaleString('es-CL')}
+                </span>
+              </div>
+              <div className="h-7 w-full bg-blue-200 dark:bg-blue-900 rounded-md" />
+            </div>
+
+            {/* Indicador de reduccion */}
+            <div className="flex items-center justify-center">
+              <span className="text-sm font-semibold text-orange-500">
+                ▼ {reductionPct}% reduccion
+              </span>
+            </div>
+
+            {/* Barra Unicos */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>Unicos</span>
+                <span className="font-medium text-gray-700 dark:text-gray-200">
+                  {data.totalOutput.toLocaleString('es-CL')}
+                </span>
+              </div>
+              <div className="h-7 bg-blue-600 rounded-md" style={{ width: `${uniquesPct}%` }} />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 2. Bar chart — registros por categoria */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-        <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Registros por categoria</p>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={barData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-            <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} />
-            <Tooltip />
-            <Bar dataKey="value" name="Registros" radius={[4, 4, 0, 0]}>
-              {barData.map((entry, i) => (
-                <Cell key={i} fill={entry.fill} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* 3. Area chart — tendencia historica (solo si hay 2+ batches) */}
+      {/* 3. Area chart historico (solo si hay 2+ batches) */}
       {showTrend && (
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
           <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">

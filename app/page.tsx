@@ -9,7 +9,7 @@
 
 import { useState, useEffect } from 'react'
 import { Toaster, toast } from 'react-hot-toast'
-import { Database, Table, ScrollText, History, Moon, Sun, BookOpen } from 'lucide-react'
+import { Database, Table, ScrollText, History, Moon, Sun, BookOpen, X } from 'lucide-react'
 import Link from 'next/link'
 
 import FileUpload, { type ProcessResponse } from './components/FileUpload'
@@ -26,7 +26,6 @@ type Tab = 'datos' | 'log' | 'historial'
 export default function Home() {
   const [result, setResult] = useState<ProcessResponse | null>(null)
   const [tab, setTab] = useState<Tab>('datos')
-  const [pendingFileRef, setPendingFileRef] = useState<File | null>(null)
   const [isDark, toggleDark] = useDarkMode()
 
   // Carga automatica de un batch cuando se navega desde Analytics (?batch=<id>)
@@ -130,12 +129,26 @@ export default function Home() {
               <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.tsv</code> — un valor por linea (o elige columna en CSV/TSV)
             </p>
           </div>
-          <FileUpload onResult={handleResult} onFilePicked={setPendingFileRef} />
+          <FileUpload onResult={handleResult} />
         </section>
 
         {/* Resultados */}
         {result && (
           <>
+            {/* Cabecera de resultados con boton limpiar */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                Resultados — {result.fileName}
+              </p>
+              <button
+                onClick={() => setResult(null)}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 dark:hover:text-red-400 border border-gray-200 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-700 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                Limpiar
+              </button>
+            </div>
+
             {/* 1. Tarjetas de estadisticas (primera fila, full width) */}
             <StatsPanel data={result} />
 

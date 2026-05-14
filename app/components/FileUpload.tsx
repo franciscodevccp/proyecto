@@ -18,8 +18,6 @@ import RulesConfig from './RulesConfig'
 
 interface FileUploadProps {
   onResult: (data: ProcessResponse) => void
-  /** Callback opcional que recibe el File cada vez que el usuario suelta un archivo */
-  onFilePicked?: (file: File) => void
 }
 
 /** Respuesta del endpoint /api/process */
@@ -38,7 +36,7 @@ export interface ProcessResponse {
   preview?: { original: string; normalized: string; changeType: string }[]
 }
 
-export default function FileUpload({ onResult, onFilePicked }: FileUploadProps) {
+export default function FileUpload({ onResult }: FileUploadProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -60,9 +58,6 @@ export default function FileUpload({ onResult, onFilePicked }: FileUploadProps) 
     setError(null)
     setPendingFile(file)
     setSelectedColumn(0)
-
-    // Notificar al padre para que pueda guardar la referencia al archivo
-    onFilePicked?.(file)
 
     // Leer el archivo en el cliente para detectar columnas (solo los primeros 50 KB)
     const slice = file.slice(0, 50 * 1024)
