@@ -26,6 +26,8 @@ interface BatchSummary {
 interface BatchHistoryProps {
   /** Callback para cargar un batch pasado en el dashboard principal */
   onLoad: (data: ProcessResponse) => void
+  /** Callback opcional que se llama con el id del batch recien eliminado */
+  onDelete?: (id: string) => void
 }
 
 /** Formatea una fecha ISO a string legible en formato chileno */
@@ -47,7 +49,7 @@ function qualityColor(score: number | null): string {
   return 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
 }
 
-export default function BatchHistory({ onLoad }: BatchHistoryProps) {
+export default function BatchHistory({ onLoad, onDelete }: BatchHistoryProps) {
   const [batches, setBatches] = useState<BatchSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -94,6 +96,8 @@ export default function BatchHistory({ onLoad }: BatchHistoryProps) {
     try {
       await fetch(`/api/batches?id=${id}`, { method: 'DELETE' })
       setBatches((prev) => prev.filter((b) => b.id !== id))
+      // Notificar al padre para que limpie el dashboard si el batch borrado es el activo
+      onDelete?.(id)
     } finally {
       setDeletingId(null)
     }

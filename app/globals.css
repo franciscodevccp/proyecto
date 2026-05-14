@@ -1,7 +1,10 @@
 @import "tailwindcss";
 
-/* Activar dark mode basado en clase .dark en el elemento raiz (Tailwind v4) */
-@custom-variant dark (&:where(.dark, .dark *));
+/* Activar dark mode basado en clase .dark en el elemento raiz (Tailwind v4).
+   Usar ".dark &" en lugar de "&:where(.dark, .dark *)" para dar especificidad
+   real (0,1,0) al selector dark, evitando que hover:bg-* en modo claro
+   sobreescriba dark:hover:bg-* al tener la misma especificidad. */
+@custom-variant dark (.dark &);
 
 :root {
   --background: #ffffff;

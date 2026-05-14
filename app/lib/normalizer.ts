@@ -54,11 +54,11 @@ function normalizeText(text: string, rules: ETLRuleSet): string {
     result = result.replace(/\s+/g, ' ')
   }
 
-  // Regla: eliminar tildes y diacriticos (NFD + rango Unicode)
+  // Regla: eliminar tildes y diacriticos (NFD + rango Unicode explícito)
   if (rules['removeAccents']) {
     result = result
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\u0300-\u036f]/g, '')
   }
 
   // Regla: aplicar formato Title Case

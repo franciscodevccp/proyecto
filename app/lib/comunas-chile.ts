@@ -96,7 +96,7 @@ export const COMUNAS_OFICIALES: string[] = [
 function stripAccents(s: string): string {
   return s
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
 }
 

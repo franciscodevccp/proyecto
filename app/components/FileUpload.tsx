@@ -4,13 +4,12 @@
  * FileUpload.tsx
  * Carga de archivos con drag & drop.
  * Soporta .txt, .csv y .tsv. Si hay multiples columnas muestra ColumnSelector.
- * Incluye: RulesConfig (reglas ETL), toggle DryRun (preview sin guardar)
- * y checkbox de correccion ortografica.
+ * Incluye RulesConfig para configurar las reglas ETL del pipeline.
  */
 
 import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Upload, FileText, Loader2, SpellCheck, Eye } from 'lucide-react'
+import { Upload, FileText, Loader2 } from 'lucide-react'
 import { parseContent, type ParseResult } from '../lib/parser'
 import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
 import type { QualityBreakdown } from '../lib/quality-score'
@@ -19,6 +18,8 @@ import RulesConfig from './RulesConfig'
 
 interface FileUploadProps {
   onResult: (data: ProcessResponse) => void
+  /** Callback opcional que recibe el File cada vez que el usuario suelta un archivo */
+  onFilePicked?: (file: File) => void
 }
 
 /** Respuesta del endpoint /api/process */
@@ -37,7 +38,7 @@ export interface ProcessResponse {
   preview?: { original: string; normalized: string; changeType: string }[]
 }
 
-export default function FileUpload({ onResult }: FileUploadProps) {
+export default function FileUpload({ onResult, onFilePicked }: FileUploadProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -46,9 +47,8 @@ export default function FileUpload({ onResult }: FileUploadProps) {
   const [parsed, setParsed] = useState<ParseResult | null>(null)
   const [selectedColumn, setSelectedColumn] = useState(0)
 
-  // Opciones del pipeline
+  // Reglas ETL configuradas por el usuario
   const [rules, setRules] = useState<ETLRuleSet>(DEFAULT_RULESET)
-  const [dryRun, setDryRun] = useState(false)
 
   /**
    * Al soltar o seleccionar un archivo, se lee y parsea localmente
@@ -60,6 +60,9 @@ export default function FileUpload({ onResult }: FileUploadProps) {
     setError(null)
     setPendingFile(file)
     setSelectedColumn(0)
+
+    // Notificar al padre para que pueda guardar la referencia al archivo
+    onFilePicked?.(file)
 
     // Leer el archivo en el cliente para detectar columnas (solo los primeros 50 KB)
     const slice = file.slice(0, 50 * 1024)
@@ -79,7 +82,7 @@ export default function FileUpload({ onResult }: FileUploadProps) {
       form.append('file', pendingFile)
       form.append('columnIndex', String(selectedColumn))
       form.append('correct', String(rules['fuzzyCorrect'] ?? false))
-      form.append('dryRun', String(dryRun))
+      form.append('dryRun', 'false')
       form.append('rules', JSON.stringify(rules))
 
       const res = await fetch('/api/process', { method: 'POST', body: form })
@@ -90,11 +93,9 @@ export default function FileUpload({ onResult }: FileUploadProps) {
       const data: ProcessResponse = await res.json()
       onResult(data)
 
-      // Limpiar estado si no es dryRun (si es dryRun se mantiene para poder confirmar)
-      if (!dryRun) {
-        setPendingFile(null)
-        setParsed(null)
-      }
+      // Limpiar estado tras procesar exitosamente
+      setPendingFile(null)
+      setParsed(null)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error desconocido')
     } finally {
@@ -182,42 +183,13 @@ export default function FileUpload({ onResult }: FileUploadProps) {
       {/* Configurador de reglas ETL */}
       <RulesConfig value={rules} onChange={setRules} />
 
-      {/* Opciones adicionales */}
-      <div className="flex flex-wrap gap-3">
-        {/* Toggle correccion ortografica */}
-        <label className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded-lg cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900 transition-colors select-none text-sm">
-          <input
-            type="checkbox"
-            checked={rules['fuzzyCorrect'] ?? false}
-            onChange={(e) => setRules({ ...rules, fuzzyCorrect: e.target.checked })}
-            disabled={loading}
-            className="w-3.5 h-3.5 accent-purple-600"
-          />
-          <SpellCheck className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-          <span className="text-purple-800 dark:text-purple-200 font-medium">Correccion ortografica</span>
-        </label>
-
-        {/* Toggle dry run */}
-        <label className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded-lg cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors select-none text-sm">
-          <input
-            type="checkbox"
-            checked={dryRun}
-            onChange={(e) => setDryRun(e.target.checked)}
-            disabled={loading}
-            className="w-3.5 h-3.5 accent-amber-600"
-          />
-          <Eye className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-          <span className="text-amber-800 dark:text-amber-200 font-medium">Vista previa (sin guardar)</span>
-        </label>
-      </div>
-
       {/* Boton de procesar (solo visible cuando hay archivo seleccionado) */}
       {pendingFile && !loading && (
         <button
           onClick={handleSubmit}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-xl transition-colors"
         >
-          {dryRun ? 'Ver preview' : 'Procesar archivo'}
+          Procesar archivo
         </button>
       )}
 
