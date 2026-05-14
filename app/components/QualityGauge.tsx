@@ -55,8 +55,8 @@ function Gauge({ score, label }: { score: number; label: string }) {
   const dashOffset = arcLength - (score / 100) * arcLength
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <svg width="180" height="110" viewBox="0 0 180 110">
+    <div className="flex flex-col items-center gap-1 w-full max-w-[180px]">
+      <svg width="100%" viewBox="0 0 180 110">
         {/* Arco de fondo gris */}
         <path
           d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`}
@@ -112,14 +112,13 @@ function IssueRow({ label, count, total }: { label: string; count: number; total
 
 export default function QualityGauge({ before, after }: QualityGaugeProps) {
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 sm:p-5">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Score de calidad del dataset</h3>
 
-      {/* Gauges lado a lado */}
-      <div className="flex justify-around items-end mb-4">
+      {/* Gauges lado a lado, escalan con el contenedor */}
+      <div className="flex justify-around items-end mb-4 gap-2">
         <Gauge score={before.score} label={`Antes — Nota ${before.grade}`} />
-        {/* Flecha de mejora */}
-        <div className="text-2xl text-gray-300 dark:text-gray-600 pb-8">→</div>
+        <div className="text-xl text-gray-300 dark:text-gray-600 pb-8 shrink-0">→</div>
         <Gauge score={after.score} label={`Despues — Nota ${after.grade}`} />
       </div>
 

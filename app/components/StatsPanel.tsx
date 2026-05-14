@@ -26,16 +26,16 @@ export default function StatsPanel({ data }: StatsPanelProps) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {cards.map((card) => {
           const Icon = card.icon
           return (
-            <div key={card.label} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 flex items-center gap-4">
-              <div className={`${card.bg} p-3 rounded-lg`}>
-                <Icon className={`w-5 h-5 ${card.color}`} />
+            <div key={card.label} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-3 sm:p-5 flex items-center gap-2 sm:gap-4">
+              <div className={`${card.bg} p-2 sm:p-3 rounded-lg shrink-0`}>
+                <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${card.color}`} />
               </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{card.value}</p>
+              <div className="min-w-0">
+                <p className="text-lg sm:text-2xl font-bold text-gray-800 dark:text-gray-100">{card.value.toLocaleString('es-CL')}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 leading-tight">{card.label}</p>
               </div>
             </div>

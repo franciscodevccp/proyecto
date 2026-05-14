@@ -76,7 +76,7 @@ export default function Home() {
 
       {/* Header */}
       <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Database className="w-7 h-7 text-blue-600" />
             <div>
@@ -89,14 +89,14 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <Link
               href="/api-docs"
-              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
               <BookOpen className="w-4 h-4" />
               API Docs
             </Link>
             <Link
               href="/analytics"
-              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
               Analytics
             </Link>
@@ -115,10 +115,10 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-4 sm:space-y-6">
 
         {/* Seccion de carga */}
-        <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-3">
+        <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-3">
           <div>
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
               Cargar archivo
@@ -173,7 +173,7 @@ export default function Home() {
                   <button
                     key={id}
                     onClick={() => setTab(id)}
-                    className={`flex items-center gap-2 px-5 py-4 text-sm font-medium transition-colors
+                    className={`flex items-center gap-1.5 px-3 sm:px-5 py-3 sm:py-4 text-xs sm:text-sm font-medium transition-colors
                       ${tab === id
                         ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
@@ -184,7 +184,7 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              <div className="p-6">
+              <div className="p-3 sm:p-6">
                 {tab === 'datos' && <DataTable batchId={result.batchId} />}
                 {tab === 'log' && <LogViewer batchId={result.batchId} />}
                 {tab === 'historial' && <BatchHistory onLoad={handleResult} onDelete={handleBatchDelete} />}

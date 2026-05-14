@@ -67,8 +67,8 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
   return (
     <div className="space-y-4">
 
-      {/* Fila superior: donut + funnel lado a lado */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Fila superior: donut + funnel — apilados en móvil, lado a lado en sm+ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
         {/* 1. Donut chart */}
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
