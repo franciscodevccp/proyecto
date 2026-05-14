@@ -53,8 +53,9 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
     : 100
 
   // ── 3. Area chart historico ───────────────────────────────────────
+  // Excluir batches con score 0 (datos anteriores al fix de la formula)
   const trendData = history
-    .filter((b) => b.qualityBefore !== null)
+    .filter((b) => b.qualityBefore !== null && (b.qualityBefore as number) > 0)
     .map((b) => ({
       name: b.fileName.replace(/\..*$/, '').slice(0, 10),
       score: b.qualityBefore as number,
@@ -92,7 +93,12 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
                   />
                 ))}
               </Pie>
-              <Tooltip formatter={(v) => [v, 'registros']} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
+                labelStyle={{ color: '#f3f4f6' }}
+                itemStyle={{ color: '#93c5fd' }}
+                formatter={(v) => [v, 'registros']}
+              />
             </PieChart>
           </ResponsiveContainer>
           {/* Leyenda */}
@@ -159,10 +165,15 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
                   <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} />
-              <Tooltip formatter={(v) => [`${v}/100`, 'Calidad']} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#4b5563" />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#d1d5db' }} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#d1d5db' }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
+                labelStyle={{ color: '#f3f4f6', fontWeight: 600 }}
+                itemStyle={{ color: '#93c5fd' }}
+                formatter={(v) => [`${v}/100`, 'Calidad']}
+              />
               <Area
                 type="monotone"
                 dataKey="score"
