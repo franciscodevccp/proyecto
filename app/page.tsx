@@ -7,7 +7,7 @@
  * DryRunBanner, tabs (Datos / Log / Historial) y dark mode toggle.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Toaster, toast } from 'react-hot-toast'
 import { Database, Table, ScrollText, History, Moon, Sun, BookOpen } from 'lucide-react'
 import Link from 'next/link'
@@ -18,7 +18,6 @@ import DataTable from './components/DataTable'
 import LogViewer from './components/LogViewer'
 import QualityGauge from './components/QualityGauge'
 import ChartsPanel from './components/ChartsPanel'
-import DryRunBanner from './components/DryRunBanner'
 import BatchHistory from './components/BatchHistory'
 import { useDarkMode } from './hooks/useDarkMode'
 
@@ -27,37 +26,49 @@ type Tab = 'datos' | 'log' | 'historial'
 export default function Home() {
   const [result, setResult] = useState<ProcessResponse | null>(null)
   const [tab, setTab] = useState<Tab>('datos')
-  const [savingDryRun, setSavingDryRun] = useState(false)
-  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [pendingFileRef, setPendingFileRef] = useState<File | null>(null)
   const [isDark, toggleDark] = useDarkMode()
 
-  /** Recibe el resultado del procesamiento (normal o dry run) */
-  function handleResult(data: ProcessResponse) {
-    setResult(data)
-    setTab('datos')
-    if (data.dryRun) {
-      toast('Modo preview: los datos NO se guardaron', { icon: '👁️' })
-    } else {
-      toast.success(`Procesado: ${data.totalOutput} registros unicos`)
+  // Carga automatica de un batch cuando se navega desde Analytics (?batch=<id>)
+  useEffect(() => {
+    const batchId = new URLSearchParams(window.location.search).get('batch')
+    if (!batchId) return
+    fetch(`/api/batches?id=${batchId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.batch) return
+        const b = data.batch
+        setResult({
+          batchId: b.id,
+          fileName: b.fileName,
+          totalInput: b.totalInput,
+          totalOutput: b.totalOutput,
+          duplicates: b.duplicates,
+          changes: b.changes,
+          corrections: 0,
+          correctionMode: false,
+          qualityBefore: null,
+          qualityAfter: null,
+        })
+        setTab('datos')
+      })
+      .catch(() => {/* ignorar errores de red */})
+  }, [])
+
+  /**
+   * Limpia el dashboard si el batch eliminado es el que se esta mostrando actualmente.
+   */
+  function handleBatchDelete(id: string) {
+    if (result?.batchId === id) {
+      setResult(null)
     }
   }
 
-  /**
-   * Confirma el dry run: reprocesa el mismo archivo sin el flag dryRun
-   * para persistir los datos en la base de datos.
-   */
-  async function handleConfirmDryRun() {
-    if (!pendingFile && !result) return
-    setSavingDryRun(true)
-    try {
-      // Re-usar el mismo archivo que se proceso en preview
-      // Como ya no tenemos la referencia al File, re-procesamos con los mismos params
-      // enviando el fileName como referencia — el usuario debera subir el archivo de nuevo
-      // si no esta en memoria. Alternativa: guardar el File en estado.
-      toast.error('Para guardar, sube el archivo nuevamente sin el modo preview activo')
-    } finally {
-      setSavingDryRun(false)
-    }
+  /** Recibe el resultado del procesamiento */
+  function handleResult(data: ProcessResponse) {
+    setResult(data)
+    setTab('datos')
+    toast.success(`Procesado: ${data.totalOutput} registros unicos`)
   }
 
   return (
@@ -119,104 +130,53 @@ export default function Home() {
               <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.tsv</code> — un valor por linea (o elige columna en CSV/TSV)
             </p>
           </div>
-          <FileUpload onResult={handleResult} />
+          <FileUpload onResult={handleResult} onFilePicked={setPendingFileRef} />
         </section>
 
         {/* Resultados */}
         {result && (
           <>
-            {/* Banner de dry run (solo visible en modo preview) */}
-            {result.dryRun && (
-              <DryRunBanner
-                fileName={result.fileName}
-                onConfirm={handleConfirmDryRun}
-                saving={savingDryRun}
-              />
-            )}
-
-            {/* Quality gauge (solo si hay scores calculados) */}
-            {result.qualityBefore && result.qualityAfter && (
-              <QualityGauge before={result.qualityBefore} after={result.qualityAfter} />
-            )}
-
-            {/* Tarjetas de estadisticas */}
+            {/* 1. Tarjetas de estadisticas (primera fila, full width) */}
             <StatsPanel data={result} />
 
-            {/* Graficos (solo en modo normal, no dry run) */}
-            {!result.dryRun && <ChartsPanel data={result} />}
+            {/* 2. Quality gauge + Graficos en grid 2 columnas en desktop */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              {result.qualityBefore && result.qualityAfter && (
+                <QualityGauge before={result.qualityBefore} after={result.qualityAfter} />
+              )}
+              <ChartsPanel data={result} />
+            </div>
 
-            {/* Preview table en dry run */}
-            {result.dryRun && result.preview && result.preview.length > 0 && (
-              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-amber-200 overflow-hidden">
-                <div className="px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                    Vista previa — primeros {result.preview.length} resultados
-                  </p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 uppercase text-xs">
-                      <tr>
-                        <th className="px-4 py-3 text-left">Original</th>
-                        <th className="px-4 py-3 text-left">Normalizado</th>
-                        <th className="px-4 py-3 text-left">Cambio</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                      {result.preview.map((row, i) => (
-                        <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                          <td className="px-4 py-2.5 font-mono text-gray-500 dark:text-gray-400">{row.original}</td>
-                          <td className="px-4 py-2.5 font-medium text-gray-800 dark:text-gray-200">{row.normalized}</td>
-                          <td className="px-4 py-2.5">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium
-                              ${row.changeType === 'normalized' ? 'bg-blue-100 text-blue-700' :
-                                row.changeType === 'corrected' ? 'bg-purple-100 text-purple-700' :
-                                row.changeType === 'duplicate' ? 'bg-orange-100 text-orange-700' :
-                                'bg-gray-100 text-gray-500'}`}
-                            >
-                              {row.changeType}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            {/* 3. Tabs: Datos / Log / Historial */}
+            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+              <div className="flex border-b border-gray-200 dark:border-gray-800">
+                {(
+                  [
+                    { id: 'datos', label: 'Datos normalizados', icon: Table },
+                    { id: 'log', label: 'Log de cambios', icon: ScrollText },
+                    { id: 'historial', label: 'Historial', icon: History },
+                  ] as const
+                ).map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setTab(id)}
+                    className={`flex items-center gap-2 px-5 py-4 text-sm font-medium transition-colors
+                      ${tab === id
+                        ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                      }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                ))}
               </div>
-            )}
-
-            {/* Tabs: Datos / Log / Historial (solo en modo normal) */}
-            {!result.dryRun && (
-              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-                <div className="flex border-b border-gray-200 dark:border-gray-800">
-                  {(
-                    [
-                      { id: 'datos', label: 'Datos normalizados', icon: Table },
-                      { id: 'log', label: 'Log de cambios', icon: ScrollText },
-                      { id: 'historial', label: 'Historial', icon: History },
-                    ] as const
-                  ).map(({ id, label, icon: Icon }) => (
-                    <button
-                      key={id}
-                      onClick={() => setTab(id)}
-                      className={`flex items-center gap-2 px-5 py-4 text-sm font-medium transition-colors
-                        ${tab === id
-                          ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
-                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                        }`}
-                    >
-                      <Icon className="w-4 h-4" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <div className="p-6">
-                  {tab === 'datos' && <DataTable batchId={result.batchId} />}
-                  {tab === 'log' && <LogViewer batchId={result.batchId} />}
-                  {tab === 'historial' && <BatchHistory onLoad={handleResult} />}
-                </div>
+              <div className="p-6">
+                {tab === 'datos' && <DataTable batchId={result.batchId} />}
+                {tab === 'log' && <LogViewer batchId={result.batchId} />}
+                {tab === 'historial' && <BatchHistory onLoad={handleResult} onDelete={handleBatchDelete} />}
               </div>
-            )}
+            </div>
           </>
         )}
 

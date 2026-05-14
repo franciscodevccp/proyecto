@@ -8,11 +8,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../lib/prisma'
 
+const BATCH_SELECT = {
+  id: true,
+  fileName: true,
+  createdAt: true,
+  totalInput: true,
+  totalOutput: true,
+  duplicates: true,
+  changes: true,
+  qualityBefore: true,
+} as const
+
 /**
- * GET /api/batches?page=1&limit=20
- * Retorna los batches ordenados del mas reciente al mas antiguo.
+ * GET /api/batches?id=X   → retorna un batch especifico
+ * GET /api/batches?page=1&limit=20  → lista paginada
  */
 export async function GET(req: NextRequest) {
+  const id = req.nextUrl.searchParams.get('id')
+
+  if (id) {
+    try {
+      const batch = await prisma.batch.findUnique({ where: { id }, select: BATCH_SELECT })
+      if (!batch) return NextResponse.json({ error: 'Batch no encontrado' }, { status: 404 })
+      return NextResponse.json({ batch })
+    } catch (error) {
+      console.error('[batches GET single]', error)
+      return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+    }
+  }
+
   const page = parseInt(req.nextUrl.searchParams.get('page') ?? '1', 10)
   const limit = parseInt(req.nextUrl.searchParams.get('limit') ?? '20', 10)
 
@@ -21,16 +45,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
-      select: {
-        id: true,
-        fileName: true,
-        createdAt: true,
-        totalInput: true,
-        totalOutput: true,
-        duplicates: true,
-        changes: true,
-        qualityBefore: true,
-      },
+      select: BATCH_SELECT,
     })
 
     return NextResponse.json({ batches })
