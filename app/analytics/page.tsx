@@ -71,11 +71,14 @@ export default function AnalyticsPage() {
   }, [])
 
   // Datos derivados para los graficos
-  const trendData = batches.map((b) => ({
-    name: b.fileName.replace(/\..*$/, '').slice(0, 12),
-    score: b.qualityBefore ?? 0,
-    fecha: fmtDate(b.createdAt),
-  }))
+  // Excluir batches con score 0 (datos anteriores al fix de la formula)
+  const trendData = batches
+    .filter((b) => b.qualityBefore !== null && b.qualityBefore > 0)
+    .map((b) => ({
+      name: b.fileName.replace(/\..*$/, '').slice(0, 12),
+      score: b.qualityBefore as number,
+      fecha: fmtDate(b.createdAt),
+    }))
 
   const topDuplicates = [...batches]
     .sort((a, b) => b.duplicates - a.duplicates)
@@ -171,7 +174,7 @@ export default function AnalyticsPage() {
             </section>
 
             {/* ── Sección 2: Graficos historicos ───────────────────── */}
-            {batches.length >= 2 && (
+            {trendData.length >= 2 && (
               <section>
                 <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
                   Graficos historicos
@@ -191,10 +194,16 @@ export default function AnalyticsPage() {
                             <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                        <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                        <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                        <Tooltip formatter={(v) => [`${v}/100`, 'Calidad']} labelFormatter={(_, payload) => payload?.[0]?.payload?.fecha ?? ''} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#4b5563" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#d1d5db' }} />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#d1d5db' }} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
+                          labelStyle={{ color: '#f3f4f6', fontWeight: 600 }}
+                          itemStyle={{ color: '#93c5fd' }}
+                          formatter={(v) => [`${v}/100`, 'Calidad']}
+                          labelFormatter={(_, payload) => payload?.[0]?.payload?.fecha ?? ''}
+                        />
                         <Area type="monotone" dataKey="score" stroke="#3b82f6" fill="url(#grad)" strokeWidth={2} dot={{ r: 3 }} name="Score" />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -207,10 +216,14 @@ export default function AnalyticsPage() {
                     </p>
                     <ResponsiveContainer width="100%" height={200}>
                       <BarChart data={topDuplicates} layout="vertical" margin={{ left: 10, right: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
-                        <XAxis type="number" tick={{ fontSize: 10 }} />
-                        <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={80} />
-                        <Tooltip />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#4b5563" horizontal={false} />
+                        <XAxis type="number" tick={{ fontSize: 10, fill: '#d1d5db' }} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#d1d5db' }} width={80} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
+                          labelStyle={{ color: '#f3f4f6' }}
+                          itemStyle={{ color: '#fed7aa' }}
+                        />
                         <Bar dataKey="duplicates" name="Duplicados" fill="#f97316" radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -227,8 +240,13 @@ export default function AnalyticsPage() {
                           <Pie data={pieData} dataKey="value" cx="50%" cy="50%" outerRadius={80} label={false}>
                             {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                           </Pie>
-                          <Tooltip formatter={(v) => [(v ?? 0).toLocaleString('es-CL'), 'registros']} />
-                          <Legend />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
+                            labelStyle={{ color: '#f3f4f6' }}
+                            itemStyle={{ color: '#d1d5db' }}
+                            formatter={(v) => [(v ?? 0).toLocaleString('es-CL'), 'registros']}
+                          />
+                          <Legend wrapperStyle={{ color: '#d1d5db' }} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
