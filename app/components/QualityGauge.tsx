@@ -19,10 +19,10 @@ interface QualityGaugeProps {
 }
 
 /** Radio y dimensiones del arco SVG */
-const R = 70       // radio del arco
+const R = 65       // radio del arco
 const CX = 90      // centro X del SVG
-const CY = 90      // centro Y del SVG
-const STROKE = 14  // grosor del arco
+const CY = 85      // centro Y del SVG
+const STROKE = 13  // grosor del arco
 
 /** Devuelve el color segun el score */
 function scoreColor(score: number): string {
@@ -56,7 +56,7 @@ function Gauge({ score, label }: { score: number; label: string }) {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <svg width="180" height="100" viewBox="0 0 180 100">
+      <svg width="180" height="110" viewBox="0 0 180 110">
         {/* Arco de fondo gris */}
         <path
           d={`M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`}
@@ -79,7 +79,7 @@ function Gauge({ score, label }: { score: number; label: string }) {
         {/* Numero del score en el centro */}
         <text
           x={CX}
-          y={CY - 4}
+          y={CY - 6}
           textAnchor="middle"
           fontSize="26"
           fontWeight="bold"
@@ -88,7 +88,7 @@ function Gauge({ score, label }: { score: number; label: string }) {
           {displayed}
         </text>
         {/* Texto "/100" debajo del numero */}
-        <text x={CX} y={CY + 14} textAnchor="middle" fontSize="11" fill="#9ca3af">
+        <text x={CX} y={CY + 12} textAnchor="middle" fontSize="11" fill="#9ca3af">
           /100
         </text>
       </svg>
