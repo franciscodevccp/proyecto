@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams
   const batchId = p.get('batchId')
   const type = p.get('type')
+  const sorted = p.get('sorted') === 'true'
 
   if (!batchId || !type) {
     return NextResponse.json({ error: 'batchId y type son requeridos' }, { status: 400 })
@@ -42,6 +43,7 @@ export async function GET(req: NextRequest) {
         where: { batchId },
         orderBy: { createdAt: 'asc' },
       })
+      if (sorted) comunas.sort((a, b) => a.normalized.localeCompare(b.normalized, 'es'))
 
       const bom = '﻿'
       const rows = [
@@ -90,6 +92,7 @@ export async function GET(req: NextRequest) {
         where: { batchId },
         orderBy: { createdAt: 'asc' },
       })
+      if (sorted) comunas.sort((a, b) => a.normalized.localeCompare(b.normalized, 'es'))
 
       const json = generateJSON(comunas, {
         fileName: batch.fileName,
@@ -114,6 +117,7 @@ export async function GET(req: NextRequest) {
         where: { batchId },
         orderBy: { createdAt: 'asc' },
       })
+      if (sorted) comunas.sort((a, b) => a.normalized.localeCompare(b.normalized, 'es'))
 
       const buffer = generateExcel(comunas, {
         fileName: batch.fileName,
@@ -139,6 +143,7 @@ export async function GET(req: NextRequest) {
         where: { batchId },
         orderBy: { createdAt: 'asc' },
       })
+      if (sorted) comunas.sort((a, b) => a.normalized.localeCompare(b.normalized, 'es'))
 
       const dialect = (p.get('dialect') ?? 'postgresql') as SQLDialect
       const tableName = p.get('tableName') ?? 'datos_norm'

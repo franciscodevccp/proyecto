@@ -201,6 +201,14 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-gray-200 dark:border-gray-800 mt-8 py-4">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between text-xs text-gray-400 dark:text-gray-600">
+          <span>COMUNAS_NORM — Pipeline ETL de normalización de texto</span>
+          <span>v0.1.0</span>
+        </div>
+      </footer>
     </div>
   )
 }

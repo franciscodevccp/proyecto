@@ -38,6 +38,9 @@ export default function DataTable({ batchId }: DataTableProps) {
   const [search, setSearch] = useState('')
   const [onlyChanged, setOnlyChanged] = useState(false)
 
+  // Ordenar datos al exportar
+  const [sortedExport, setSortedExport] = useState(false)
+
   // Estado del dropdown de exportacion y panel SQL
   const [exportOpen, setExportOpen] = useState(false)
   const [showSql, setShowSql] = useState(false)
@@ -79,7 +82,8 @@ export default function DataTable({ batchId }: DataTableProps) {
   const hasActiveFilters = search !== '' || onlyChanged
 
   function download(type: string) {
-    window.open(`/api/download?batchId=${batchId}&type=${type}`, '_blank')
+    const sortParam = sortedExport ? '&sorted=true' : ''
+    window.open(`/api/download?batchId=${batchId}&type=${type}${sortParam}`, '_blank')
     setExportOpen(false)
   }
 
@@ -161,6 +165,17 @@ export default function DataTable({ batchId }: DataTableProps) {
                   {opt.label}
                 </button>
               ))}
+              <div className="px-4 py-2.5 border-t border-gray-100 dark:border-gray-700">
+                <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={sortedExport}
+                    onChange={(e) => setSortedExport(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-blue-600"
+                  />
+                  Ordenar A→Z
+                </label>
+              </div>
               <button
                 onClick={() => { setShowSql((s) => !s); setExportOpen(false) }}
                 className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border-t border-gray-100 dark:border-gray-700"
