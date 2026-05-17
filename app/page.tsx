@@ -88,6 +88,18 @@ export default function Home() {
           {/* Navegacion y dark mode */}
           <div className="flex items-center gap-3">
             <Link
+              href="/famosos"
+              className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              Famosos
+            </Link>
+            <Link
+              href="/lugares"
+              className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              Lugares
+            </Link>
+            <Link
               href="/api-docs"
               className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
