@@ -41,3 +41,85 @@ model LogEntry {
   detail     String?
   createdAt  DateTime @default(now())
 }
+
+// ── Módulo Famosos ──────────────────────────────────────────────────────────
+
+/// Encabezado de cada procesamiento del archivo de famosos.
+/// Almacena estadísticas globales del batch.
+model FamosoBatch {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  fileName    String
+  totalInput  Int      // Líneas totales en el archivo original
+  totalOutput Int      // Famosos únicos guardados tras deduplicar
+  duplicates  Int      // Cantidad de duplicados eliminados
+  cumpleanos  Int      // Cuántos famosos cumplen años hoy
+  famosos     Famoso[]
+}
+
+/// Un personaje famoso procesado y normalizado.
+/// La fecha de nacimiento se almacena en múltiples formatos según disponibilidad.
+model Famoso {
+  id               String      @id @default(cuid())
+  batchId          String
+  batch            FamosoBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  nombre           String      // Nombre completo del personaje
+  fechaOriginal    String      // Fecha tal como venía en el archivo fuente
+  fechaNormalizada String?     // Fecha estandarizada DD-MM-YYYY (null si es aproximada)
+  fechaAprox       String?     // Texto libre para fechas históricas: "aprox. 69 a.C."
+  edad             Int?        // Edad calculada al día de hoy (null si la fecha es aproximada)
+  esCumpleanos     Boolean     @default(false) // True si hoy coincide con su día y mes de nacimiento
+  createdAt        DateTime    @default(now())
+
+  @@index([batchId])
+}
+
+// ── Módulo Lugares ──────────────────────────────────────────────────────────
+
+/// Encabezado de cada procesamiento del archivo de lugares turísticos.
+model LugarBatch {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  fileName    String
+  totalInput  Int      // Registros totales en el archivo (sin contar header)
+  totalOutput Int      // Lugares únicos guardados tras deduplicar
+  duplicates  Int      // Duplicados eliminados (mismo nombre + misma georef)
+  lugares     Lugar[]
+}
+
+/// Un lugar turístico único con sus datos relacionados.
+/// Se considera duplicado solo si coinciden nombre Y coordenadas (ejemplo: Apple Park aparece 2 veces con coords distintas → ambos son válidos).
+model Lugar {
+  id        String         @id @default(cuid())
+  batchId   String
+  batch     LugarBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  nombre    String         // Nombre del lugar tal como aparece en el archivo
+  georef    Georeferencia? // Coordenadas geográficas (relación 1:1 opcional)
+  direccion Direccion?     // Dirección postal estructurada (relación 1:1 opcional)
+  createdAt DateTime       @default(now())
+
+  @@index([batchId])
+}
+
+/// Coordenadas geográficas de un lugar (latitud y longitud).
+/// Relación 1:1 con Lugar.
+model Georeferencia {
+  id       String @id @default(cuid())
+  lugarId  String @unique
+  lugar    Lugar  @relation(fields: [lugarId], references: [id], onDelete: Cascade)
+  latitud  Float  // Latitud en grados decimales (ej: -33.4489)
+  longitud Float  // Longitud en grados decimales (ej: -70.6693)
+}
+
+/// Dirección postal de un lugar, parseada en componentes estructurados.
+/// Relación 1:1 con Lugar.
+model Direccion {
+  id                    String  @id @default(cuid())
+  lugarId               String  @unique
+  lugar                 Lugar   @relation(fields: [lugarId], references: [id], onDelete: Cascade)
+  nombreCalle           String? // Nombre de la calle o vía (sin número)
+  numeroCalle           String? // Número de la dirección
+  ciudadEstadoProvincia String? // Ciudad, estado o provincia
+  pais                  String? // País del lugar
+  rawDireccion          String  // Dirección original sin parsear (respaldo completo)
+}
