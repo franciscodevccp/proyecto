@@ -12,13 +12,17 @@ import { prisma } from '../../../lib/prisma'
 import { generateLugaresSQL } from '../../../lib/exporters'
 
 /**
- * GET /api/lugares/download?batchId=XXX&type=csv|json|txt&sorted=true
+ * GET /api/lugares/download?batchId=XXX&type=csv|json|txt|sql&sorted=true
+ *   &dialect=postgresql|mysql   (solo para type=sql)
+ *   &preview=true               (solo para type=sql, devuelve primeras 30 lineas)
  */
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams
   const batchId = p.get('batchId')
   const type = p.get('type') ?? 'csv'
   const sorted = p.get('sorted') === 'true'
+  const dialect = (p.get('dialect') ?? 'postgresql') as 'postgresql' | 'mysql'
+  const preview = p.get('preview') === 'true'
 
   if (!batchId) {
     return NextResponse.json({ error: 'batchId es requerido' }, { status: 400 })
@@ -137,21 +141,30 @@ export async function GET(req: NextRequest) {
 
     // ── SQL (3 tablas con FK) ─────────────────────────────────────────
     if (type === 'sql') {
-      const sql = generateLugaresSQL(lugares.map((l) => ({
-        nombre: l.nombre,
-        georef: l.georef
-          ? { latitud: l.georef.latitud, longitud: l.georef.longitud }
-          : null,
-        direccion: l.direccion
-          ? {
-              nombreCalle:            l.direccion.nombreCalle,
-              numeroCalle:            l.direccion.numeroCalle,
-              ciudadEstadoProvincia:  l.direccion.ciudadEstadoProvincia,
-              pais:                   l.direccion.pais,
-              rawDireccion:           l.direccion.rawDireccion,
-            }
-          : null,
-      })))
+      const sql = generateLugaresSQL(
+        lugares.map((l) => ({
+          nombre: l.nombre,
+          georef: l.georef
+            ? { latitud: l.georef.latitud, longitud: l.georef.longitud }
+            : null,
+          direccion: l.direccion
+            ? {
+                nombreCalle:            l.direccion.nombreCalle,
+                numeroCalle:            l.direccion.numeroCalle,
+                ciudadEstadoProvincia:  l.direccion.ciudadEstadoProvincia,
+                pais:                   l.direccion.pais,
+                rawDireccion:           l.direccion.rawDireccion,
+              }
+            : null,
+        })),
+        { dialect },
+      )
+
+      // Modo preview: devolver solo las primeras 30 lineas no vacias como JSON
+      if (preview) {
+        const lineas = sql.split('\n').filter((l) => l.trim()).slice(0, 30).join('\n')
+        return NextResponse.json({ preview: lineas })
+      }
 
       return new NextResponse(sql, {
         headers: {

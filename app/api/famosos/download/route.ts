@@ -10,15 +10,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
 import { generateFamososSQL } from '../../../lib/exporters'
+import type { SQLDialect } from '../../../lib/exporters'
 
 /**
- * GET /api/famosos/download?batchId=XXX&type=csv|json|txt&sorted=true
+ * GET /api/famosos/download?batchId=XXX&type=csv|json|txt|sql&sorted=true
+ *   &dialect=postgresql|mysql|sqlite   (solo para type=sql)
+ *   &tableName=famosos_norm            (solo para type=sql)
+ *   &preview=true                      (solo para type=sql, devuelve primeras 30 lineas)
  */
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams
   const batchId = p.get('batchId')
   const type = p.get('type') ?? 'csv'
   const sorted = p.get('sorted') === 'true'
+  const dialect = (p.get('dialect') ?? 'postgresql') as SQLDialect
+  const tableName = p.get('tableName') ?? 'famosos_norm'
+  const preview = p.get('preview') === 'true'
 
   if (!batchId) {
     return NextResponse.json({ error: 'batchId es requerido' }, { status: 400 })
@@ -124,19 +131,29 @@ export async function GET(req: NextRequest) {
 
     // ── SQL ───────────────────────────────────────────────────────────
     if (type === 'sql') {
-      const sql = generateFamososSQL(famosos.map((f) => ({
-        nombre:            f.nombre,
-        fechaOriginal:     f.fechaOriginal,
-        fechaNormalizada:  f.fechaNormalizada,
-        fechaAprox:        f.fechaAprox,
-        edad:              f.edad,
-        esCumpleanos:      f.esCumpleanos,
-      })))
+      const sql = generateFamososSQL(
+        famosos.map((f) => ({
+          nombre:            f.nombre,
+          fechaOriginal:     f.fechaOriginal,
+          fechaNormalizada:  f.fechaNormalizada,
+          fechaAprox:        f.fechaAprox,
+          edad:              f.edad,
+          esCumpleanos:      f.esCumpleanos,
+        })),
+        { dialect, tableName },
+      )
 
+      // Modo preview: devolver solo las primeras 30 lineas no vacias como JSON
+      if (preview) {
+        const lineas = sql.split('\n').filter((l) => l.trim()).slice(0, 30).join('\n')
+        return NextResponse.json({ preview: lineas })
+      }
+
+      const nombreArchivo = `${tableName}.sql`
       return new NextResponse(sql, {
         headers: {
           'Content-Type': 'text/plain; charset=utf-8',
-          'Content-Disposition': `attachment; filename="famosos_norm.sql"`,
+          'Content-Disposition': `attachment; filename="${nombreArchivo}"`,
         },
       })
     }

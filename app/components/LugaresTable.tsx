@@ -19,8 +19,8 @@ import {
   MapPin,
   ArrowUpDown,
   Check,
-  Database,
 } from 'lucide-react'
+import LugaresSqlExport from './LugaresSqlExport'
 
 /** Estructura de un lugar recibido de la API (con relaciones incluidas) */
 interface Georef {
@@ -324,25 +324,11 @@ export default function LugaresTable({ batchId }: LugaresTableProps) {
                 </div>
               </div>
 
-              {/* Botón SQL — script PostgreSQL con 3 tablas y FK */}
-              <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
-                <button
-                  onClick={() => descargar('sql')}
-                  className="flex items-center gap-2 w-full justify-center
-                    text-sm bg-gray-800 hover:bg-gray-900 dark:bg-gray-700
-                    dark:hover:bg-gray-600 text-white px-4 py-2.5 rounded-xl
-                    transition-colors"
-                >
-                  {descargando === 'sql'
-                    ? <Check className="w-4 h-4" />
-                    : <Database className="w-4 h-4" />
-                  }
-                  Descargar SQL (3 tablas)
-                </button>
-                <p className="text-xs text-center text-gray-400 mt-1.5">
-                  Script PostgreSQL — Lugares + Georeferencias + Direcciones con FK
-                </p>
-              </div>
+              {/* Panel SQL configurable */}
+              <LugaresSqlExport
+                batchId={batchId}
+                totalRegistros={lugares.length}
+              />
 
             </div>
           </div>

@@ -267,47 +267,93 @@ interface FamosoParaSQL {
   esCumpleanos: boolean
 }
 
+/** Opciones de exportacion SQL para el modulo de famosos */
+export interface FamososSQLOptions {
+  /** Nombre de la tabla destino (default: 'famosos_norm') */
+  tableName?: string
+  /** Motor de base de datos destino (default: 'postgresql') */
+  dialect?: SQLDialect
+}
+
+/** Devuelve el identificador entre las comillas correctas segun el dialecto */
+function quoteIdent(name: string, dialect: SQLDialect): string {
+  return dialect === 'mysql' ? `\`${name}\`` : `"${name}"`
+}
+
 /**
- * Genera el script SQL completo para la tabla famosos_norm.
+ * Genera el script SQL completo para la tabla de famosos normalizados.
+ * Soporta PostgreSQL, MySQL y SQLite.
  * Incluye: encabezado con fecha y totales, DROP TABLE IF EXISTS,
  * CREATE TABLE e INSERT INTO en batches de 500 filas.
  *
- * @param famosos - Lista de famosos a insertar
- * @returns String con el script SQL listo para ejecutar en PostgreSQL
+ * @param famosos  - Lista de famosos a insertar
+ * @param options  - Dialecto SQL y nombre de tabla (opcionales)
+ * @returns String con el script SQL listo para ejecutar
  */
-export function generateFamososSQL(famosos: FamosoParaSQL[]): string {
+export function generateFamososSQL(
+  famosos: FamosoParaSQL[],
+  options?: FamososSQLOptions,
+): string {
+  const tableName = options?.tableName?.trim() || 'famosos_norm'
+  const dialect: SQLDialect = options?.dialect ?? 'postgresql'
+  const q = (n: string) => quoteIdent(n, dialect)
   const now = new Date().toISOString()
   const lines: string[] = []
 
   // ── Encabezado ──────────────────────────────
   lines.push(`-- ============================================================`)
-  lines.push(`-- Exportado por COMUNAS_NORM — Módulo Famosos`)
+  lines.push(`-- Exportado por COMUNAS_NORM — Modulo Famosos`)
   lines.push(`-- Fecha: ${now}`)
+  lines.push(`-- Dialecto: ${dialect.toUpperCase()}`)
+  lines.push(`-- Tabla: ${tableName}`)
   lines.push(`-- Total de registros: ${famosos.length}`)
   lines.push(`-- ============================================================`)
   lines.push('')
 
   // ── DROP TABLE IF EXISTS ─────────────────────
-  lines.push(`DROP TABLE IF EXISTS famosos_norm;`)
+  lines.push(`DROP TABLE IF EXISTS ${q(tableName)};`)
   lines.push('')
 
   // ── CREATE TABLE ─────────────────────────────
-  lines.push(`CREATE TABLE famosos_norm (`)
-  lines.push(`  id                SERIAL PRIMARY KEY,`)
-  lines.push(`  nombre            VARCHAR(255) NOT NULL,`)
-  lines.push(`  fecha_original    VARCHAR(100) NOT NULL,`)
-  lines.push(`  fecha_normalizada VARCHAR(20),`)
-  lines.push(`  fecha_aprox       VARCHAR(100),`)
-  lines.push(`  edad              INT,`)
-  lines.push(`  es_cumpleanos     BOOLEAN DEFAULT FALSE`)
-  lines.push(`);`)
+  if (dialect === 'postgresql') {
+    lines.push(`CREATE TABLE ${q(tableName)} (`)
+    lines.push(`  id                SERIAL PRIMARY KEY,`)
+    lines.push(`  nombre            VARCHAR(255) NOT NULL,`)
+    lines.push(`  fecha_original    VARCHAR(100) NOT NULL,`)
+    lines.push(`  fecha_normalizada VARCHAR(20),`)
+    lines.push(`  fecha_aprox       VARCHAR(100),`)
+    lines.push(`  edad              INT,`)
+    lines.push(`  es_cumpleanos     BOOLEAN DEFAULT FALSE`)
+    lines.push(`);`)
+  } else if (dialect === 'mysql') {
+    lines.push(`CREATE TABLE ${q(tableName)} (`)
+    lines.push(`  id                INT AUTO_INCREMENT PRIMARY KEY,`)
+    lines.push(`  nombre            VARCHAR(255) NOT NULL,`)
+    lines.push(`  fecha_original    VARCHAR(100) NOT NULL,`)
+    lines.push(`  fecha_normalizada VARCHAR(20),`)
+    lines.push(`  fecha_aprox       VARCHAR(100),`)
+    lines.push(`  edad              INT,`)
+    lines.push(`  es_cumpleanos     TINYINT(1) DEFAULT 0`)
+    lines.push(`) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`)
+  } else {
+    // SQLite
+    lines.push(`CREATE TABLE IF NOT EXISTS ${q(tableName)} (`)
+    lines.push(`  id                INTEGER PRIMARY KEY AUTOINCREMENT,`)
+    lines.push(`  nombre            TEXT NOT NULL,`)
+    lines.push(`  fecha_original    TEXT NOT NULL,`)
+    lines.push(`  fecha_normalizada TEXT,`)
+    lines.push(`  fecha_aprox       TEXT,`)
+    lines.push(`  edad              INTEGER,`)
+    lines.push(`  es_cumpleanos     INTEGER DEFAULT 0`)
+    lines.push(`);`)
+  }
   lines.push('')
 
   // ── INSERT INTO en batches de 500 filas ──────
   const BATCH_SIZE = 500
   for (let i = 0; i < famosos.length; i += BATCH_SIZE) {
     const chunk = famosos.slice(i, i + BATCH_SIZE)
-    lines.push(`INSERT INTO famosos_norm`)
+    lines.push(`INSERT INTO ${q(tableName)}`)
     lines.push(`  (nombre, fecha_original, fecha_normalizada, fecha_aprox, edad, es_cumpleanos)`)
     lines.push(`VALUES`)
     chunk.forEach((f, idx) => {
@@ -316,7 +362,10 @@ export function generateFamososSQL(famosos: FamosoParaSQL[]): string {
       const fechaNorm = f.fechaNormalizada !== null ? `'${escapeSql(f.fechaNormalizada)}'` : 'NULL'
       const fechaAprx = f.fechaAprox !== null ? `'${escapeSql(f.fechaAprox)}'` : 'NULL'
       const edad      = f.edad !== null ? String(f.edad) : 'NULL'
-      const cumple    = f.esCumpleanos ? 'TRUE' : 'FALSE'
+      // PostgreSQL acepta TRUE/FALSE; MySQL y SQLite usan 1/0
+      const cumple    = dialect === 'postgresql'
+        ? (f.esCumpleanos ? 'TRUE' : 'FALSE')
+        : (f.esCumpleanos ? '1' : '0')
       const coma      = idx < chunk.length - 1 ? ',' : ''
       lines.push(`  (${nombre}, ${fechaOrig}, ${fechaNorm}, ${fechaAprx}, ${edad}, ${cumple})${coma}`)
     })
@@ -324,9 +373,9 @@ export function generateFamososSQL(famosos: FamosoParaSQL[]): string {
     lines.push('')
   }
 
-  // ── Pie de página ────────────────────────────
+  // ── Pie de pagina ────────────────────────────
   lines.push(`-- ============================================================`)
-  lines.push(`-- Fin del script — ${famosos.length} registros insertados`)
+  lines.push(`-- Fin del script — ${famosos.length} registro(s) insertado(s)`)
   lines.push(`-- ============================================================`)
 
   return lines.join('\n')
@@ -349,26 +398,40 @@ interface LugarParaSQL {
   } | null
 }
 
+/** Opciones de exportacion SQL para el modulo de lugares (sin SQLite: FK hace mas sentido en PG/MySQL) */
+export interface LugaresSQLOptions {
+  /** Motor de base de datos destino (default: 'postgresql') */
+  dialect?: 'postgresql' | 'mysql'
+}
+
 /**
- * Genera el script SQL completo para las 3 tablas de lugares turísticos:
+ * Genera el script SQL completo para las 3 tablas de lugares turisticos:
  *   - lugares         (tabla principal con id y nombre)
  *   - georeferencias  (FK → lugares, solo registros con coordenadas)
  *   - direcciones     (FK → lugares, todos los registros)
  *
+ * Soporta PostgreSQL y MySQL.
  * Las tablas hijas se eliminan primero para respetar las restricciones FK.
  * Los INSERT usan IDs correlativos comenzando en 1.
  *
- * @param lugares - Lista de lugares a insertar
- * @returns String con el script SQL listo para ejecutar en PostgreSQL
+ * @param lugares  - Lista de lugares a insertar
+ * @param options  - Dialecto SQL (opcional, default postgresql)
+ * @returns String con el script SQL listo para ejecutar
  */
-export function generateLugaresSQL(lugares: LugarParaSQL[]): string {
+export function generateLugaresSQL(
+  lugares: LugarParaSQL[],
+  options?: LugaresSQLOptions,
+): string {
+  const dialect: 'postgresql' | 'mysql' = options?.dialect ?? 'postgresql'
+  const q = (n: string) => quoteIdent(n, dialect)
   const now = new Date().toISOString()
   const lines: string[] = []
 
   // ── Encabezado ──────────────────────────────
   lines.push(`-- ============================================================`)
-  lines.push(`-- Exportado por COMUNAS_NORM — Módulo Lugares Turísticos`)
+  lines.push(`-- Exportado por COMUNAS_NORM — Modulo Lugares Turisticos`)
   lines.push(`-- Fecha: ${now}`)
+  lines.push(`-- Dialecto: ${dialect.toUpperCase()}`)
   lines.push(`-- Total de lugares: ${lugares.length}`)
   lines.push(`-- Tablas generadas: lugares, georeferencias, direcciones`)
   lines.push(`-- ============================================================`)
@@ -376,40 +439,44 @@ export function generateLugaresSQL(lugares: LugarParaSQL[]): string {
 
   // ── DROP TABLE IF EXISTS (hijas primero para respetar FK) ────
   lines.push(`-- Eliminar tablas hijas antes que la tabla padre`)
-  lines.push(`DROP TABLE IF EXISTS direcciones;`)
-  lines.push(`DROP TABLE IF EXISTS georeferencias;`)
-  lines.push(`DROP TABLE IF EXISTS lugares;`)
+  lines.push(`DROP TABLE IF EXISTS ${q('direcciones')};`)
+  lines.push(`DROP TABLE IF EXISTS ${q('georeferencias')};`)
+  lines.push(`DROP TABLE IF EXISTS ${q('lugares')};`)
   lines.push('')
+
+  // Alias para tipo serial segun dialecto
+  const serialPK = dialect === 'mysql' ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'SERIAL PRIMARY KEY'
+  const tableEnd  = dialect === 'mysql' ? ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;' : ');'
 
   // ── CREATE TABLE lugares ─────────────────────
   lines.push(`-- Tabla principal`)
-  lines.push(`CREATE TABLE lugares (`)
-  lines.push(`  id     SERIAL PRIMARY KEY,`)
+  lines.push(`CREATE TABLE ${q('lugares')} (`)
+  lines.push(`  id     ${serialPK},`)
   lines.push(`  nombre VARCHAR(255) NOT NULL`)
-  lines.push(`);`)
+  lines.push(tableEnd)
   lines.push('')
 
   // ── CREATE TABLE georeferencias ──────────────
-  lines.push(`-- Coordenadas geográficas (solo para lugares con georef)`)
-  lines.push(`CREATE TABLE georeferencias (`)
-  lines.push(`  id       SERIAL PRIMARY KEY,`)
-  lines.push(`  lugar_id INT NOT NULL REFERENCES lugares(id) ON DELETE CASCADE,`)
+  lines.push(`-- Coordenadas geograficas (solo para lugares con georef)`)
+  lines.push(`CREATE TABLE ${q('georeferencias')} (`)
+  lines.push(`  id       ${serialPK},`)
+  lines.push(`  lugar_id INT NOT NULL REFERENCES ${q('lugares')}(id) ON DELETE CASCADE,`)
   lines.push(`  latitud  DECIMAL(10,7) NOT NULL,`)
   lines.push(`  longitud DECIMAL(10,7) NOT NULL`)
-  lines.push(`);`)
+  lines.push(tableEnd)
   lines.push('')
 
   // ── CREATE TABLE direcciones ─────────────────
-  lines.push(`-- Dirección postal estructurada de cada lugar`)
-  lines.push(`CREATE TABLE direcciones (`)
-  lines.push(`  id                      SERIAL PRIMARY KEY,`)
-  lines.push(`  lugar_id                INT NOT NULL REFERENCES lugares(id) ON DELETE CASCADE,`)
+  lines.push(`-- Direccion postal estructurada de cada lugar`)
+  lines.push(`CREATE TABLE ${q('direcciones')} (`)
+  lines.push(`  id                      ${serialPK},`)
+  lines.push(`  lugar_id                INT NOT NULL REFERENCES ${q('lugares')}(id) ON DELETE CASCADE,`)
   lines.push(`  nombre_calle            VARCHAR(255),`)
   lines.push(`  numero_calle            VARCHAR(50),`)
   lines.push(`  ciudad_estado_provincia VARCHAR(255),`)
   lines.push(`  pais                    VARCHAR(100),`)
   lines.push(`  raw_direccion           TEXT NOT NULL`)
-  lines.push(`);`)
+  lines.push(tableEnd)
   lines.push('')
 
   // ── INSERT INTO lugares ──────────────────────
@@ -418,7 +485,7 @@ export function generateLugaresSQL(lugares: LugarParaSQL[]): string {
     lines.push(`-- Insertar ${lugares.length} lugar(es) con IDs correlativos`)
     for (let i = 0; i < lugares.length; i += BATCH_SIZE) {
       const chunk = lugares.slice(i, i + BATCH_SIZE)
-      lines.push(`INSERT INTO lugares (id, nombre) VALUES`)
+      lines.push(`INSERT INTO ${q('lugares')} (id, nombre) VALUES`)
       chunk.forEach((l, idx) => {
         const id     = i + idx + 1
         const nombre = `'${escapeSql(l.nombre)}'`
@@ -439,7 +506,7 @@ export function generateLugaresSQL(lugares: LugarParaSQL[]): string {
     lines.push(`-- Insertar georeferencias (${conGeoref.length} de ${lugares.length} lugar(es))`)
     for (let i = 0; i < conGeoref.length; i += BATCH_SIZE) {
       const chunk = conGeoref.slice(i, i + BATCH_SIZE)
-      lines.push(`INSERT INTO georeferencias (lugar_id, latitud, longitud) VALUES`)
+      lines.push(`INSERT INTO ${q('georeferencias')} (lugar_id, latitud, longitud) VALUES`)
       chunk.forEach(({ l, id }, idx) => {
         const lat  = l.georef!.latitud.toFixed(7)
         const lon  = l.georef!.longitud.toFixed(7)
@@ -456,7 +523,7 @@ export function generateLugaresSQL(lugares: LugarParaSQL[]): string {
     lines.push(`-- Insertar direcciones (una por cada lugar)`)
     for (let i = 0; i < lugares.length; i += BATCH_SIZE) {
       const chunk = lugares.slice(i, i + BATCH_SIZE)
-      lines.push(`INSERT INTO direcciones`)
+      lines.push(`INSERT INTO ${q('direcciones')}`)
       lines.push(`  (lugar_id, nombre_calle, numero_calle, ciudad_estado_provincia, pais, raw_direccion)`)
       lines.push(`VALUES`)
       chunk.forEach((l, idx) => {
@@ -474,7 +541,7 @@ export function generateLugaresSQL(lugares: LugarParaSQL[]): string {
     }
   }
 
-  // ── Pie de página ────────────────────────────
+  // ── Pie de pagina ────────────────────────────
   lines.push(`-- ============================================================`)
   lines.push(`-- Fin del script — ${lugares.length} lugar(es) insertado(s)`)
   lines.push(`-- ============================================================`)
