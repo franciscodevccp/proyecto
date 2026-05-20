@@ -13,9 +13,27 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useDarkMode } from '../hooks/useDarkMode'
 import {
-  Database, TrendingUp, Printer, Users, MapPin,
+  Database, TrendingUp, Download, Users, MapPin,
   Sun, Moon, ChevronDown, Loader2, ArrowLeft,
 } from 'lucide-react'
+
+// ─── Tipos para html2pdf.js (sin tipos oficiales en DefinitelyTyped) ──────────
+
+interface Html2PdfOptions {
+  margin?: number | number[]
+  filename?: string
+  image?: { type: string; quality: number }
+  html2canvas?: { scale?: number; useCORS?: boolean; logging?: boolean }
+  jsPDF?: { unit?: string; format?: string; orientation?: string }
+}
+
+interface Html2PdfInstance {
+  set(opts: Html2PdfOptions): Html2PdfInstance
+  from(el: HTMLElement): Html2PdfInstance
+  save(): Promise<void>
+}
+
+type Html2PdfFn = () => Html2PdfInstance
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -446,6 +464,29 @@ export default function ReportePage() {
   const [batchId, setBatchId]     = useState<string>('')
   const [reporte, setReporte]     = useState<ReporteData | null>(null)
   const [cargando, setCargando]   = useState(false)
+  const [descargando, setDescargando] = useState(false)
+
+  /** Genera y descarga el reporte como PDF usando html2pdf.js */
+  async function descargarPDF() {
+    const elemento = document.getElementById('reporte-documento')
+    if (!elemento || !reporte) return
+    setDescargando(true)
+    try {
+      const { default: html2pdfFn } = await import('html2pdf.js') as { default: Html2PdfFn }
+      await html2pdfFn()
+        .set({
+          margin: [12, 12, 12, 12],
+          filename: `reporte-${reporte.modulo}-${reporte.fileName}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        })
+        .from(elemento)
+        .save()
+    } finally {
+      setDescargando(false)
+    }
+  }
 
   // Carga la lista de batches al montar
   useEffect(() => {
@@ -597,7 +638,7 @@ export default function ReportePage() {
 
         {/* Documento del reporte */}
         {!cargando && reporte && (
-          <div className="print-card bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+          <div id="reporte-documento" className="print-card bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
 
             {/* Cabecera del documento */}
             <div
@@ -629,13 +670,17 @@ export default function ReportePage() {
                     </span>
                   </div>
                 </div>
-                {/* Botón imprimir */}
+                {/* Botón descargar PDF */}
                 <button
-                  onClick={() => window.print()}
-                  className="no-print flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-lg hover:bg-white dark:hover:bg-gray-800 transition-colors shrink-0"
+                  onClick={descargarPDF}
+                  disabled={descargando}
+                  className="no-print flex items-center gap-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-all shrink-0"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  Imprimir / PDF
+                  {descargando
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Download className="w-4 h-4" />
+                  }
+                  {descargando ? 'Generando…' : 'Descargar PDF'}
                 </button>
               </div>
 

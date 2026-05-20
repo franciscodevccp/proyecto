@@ -164,15 +164,13 @@ export default function Home() {
             >
               Analytics
             </Link>
-            {result && (
-              <Link
-                href={`/reporte?batch=${result.batchId}&modulo=comunas`}
-                className="hidden sm:flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
-              >
-                <BarChart2 className="w-4 h-4" />
-                Reporte
-              </Link>
-            )}
+            <Link
+              href={result ? `/reporte?batch=${result.batchId}&modulo=comunas` : '/reporte'}
+              className="hidden sm:flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+            >
+              <BarChart2 className="w-4 h-4" />
+              Reporte
+            </Link>
             {/* Toggle dark mode */}
             <button
               onClick={toggleDark}
