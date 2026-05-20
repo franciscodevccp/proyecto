@@ -252,3 +252,232 @@ export function generateExcel(
   const xlsxBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
   return xlsxBuffer
 }
+
+// ─────────────────────────────────────────────
+// SQL — FAMOSOS (1 tabla)
+// ─────────────────────────────────────────────
+
+/** Estructura mínima de un famoso necesaria para generar el SQL */
+interface FamosoParaSQL {
+  nombre: string
+  fechaOriginal: string
+  fechaNormalizada: string | null
+  fechaAprox: string | null
+  edad: number | null
+  esCumpleanos: boolean
+}
+
+/**
+ * Genera el script SQL completo para la tabla famosos_norm.
+ * Incluye: encabezado con fecha y totales, DROP TABLE IF EXISTS,
+ * CREATE TABLE e INSERT INTO en batches de 500 filas.
+ *
+ * @param famosos - Lista de famosos a insertar
+ * @returns String con el script SQL listo para ejecutar en PostgreSQL
+ */
+export function generateFamososSQL(famosos: FamosoParaSQL[]): string {
+  const now = new Date().toISOString()
+  const lines: string[] = []
+
+  // ── Encabezado ──────────────────────────────
+  lines.push(`-- ============================================================`)
+  lines.push(`-- Exportado por COMUNAS_NORM — Módulo Famosos`)
+  lines.push(`-- Fecha: ${now}`)
+  lines.push(`-- Total de registros: ${famosos.length}`)
+  lines.push(`-- ============================================================`)
+  lines.push('')
+
+  // ── DROP TABLE IF EXISTS ─────────────────────
+  lines.push(`DROP TABLE IF EXISTS famosos_norm;`)
+  lines.push('')
+
+  // ── CREATE TABLE ─────────────────────────────
+  lines.push(`CREATE TABLE famosos_norm (`)
+  lines.push(`  id                SERIAL PRIMARY KEY,`)
+  lines.push(`  nombre            VARCHAR(255) NOT NULL,`)
+  lines.push(`  fecha_original    VARCHAR(100) NOT NULL,`)
+  lines.push(`  fecha_normalizada VARCHAR(20),`)
+  lines.push(`  fecha_aprox       VARCHAR(100),`)
+  lines.push(`  edad              INT,`)
+  lines.push(`  es_cumpleanos     BOOLEAN DEFAULT FALSE`)
+  lines.push(`);`)
+  lines.push('')
+
+  // ── INSERT INTO en batches de 500 filas ──────
+  const BATCH_SIZE = 500
+  for (let i = 0; i < famosos.length; i += BATCH_SIZE) {
+    const chunk = famosos.slice(i, i + BATCH_SIZE)
+    lines.push(`INSERT INTO famosos_norm`)
+    lines.push(`  (nombre, fecha_original, fecha_normalizada, fecha_aprox, edad, es_cumpleanos)`)
+    lines.push(`VALUES`)
+    chunk.forEach((f, idx) => {
+      const nombre    = `'${escapeSql(f.nombre)}'`
+      const fechaOrig = `'${escapeSql(f.fechaOriginal)}'`
+      const fechaNorm = f.fechaNormalizada !== null ? `'${escapeSql(f.fechaNormalizada)}'` : 'NULL'
+      const fechaAprx = f.fechaAprox !== null ? `'${escapeSql(f.fechaAprox)}'` : 'NULL'
+      const edad      = f.edad !== null ? String(f.edad) : 'NULL'
+      const cumple    = f.esCumpleanos ? 'TRUE' : 'FALSE'
+      const coma      = idx < chunk.length - 1 ? ',' : ''
+      lines.push(`  (${nombre}, ${fechaOrig}, ${fechaNorm}, ${fechaAprx}, ${edad}, ${cumple})${coma}`)
+    })
+    lines.push(`;`)
+    lines.push('')
+  }
+
+  // ── Pie de página ────────────────────────────
+  lines.push(`-- ============================================================`)
+  lines.push(`-- Fin del script — ${famosos.length} registros insertados`)
+  lines.push(`-- ============================================================`)
+
+  return lines.join('\n')
+}
+
+// ─────────────────────────────────────────────
+// SQL — LUGARES (3 tablas con FK)
+// ─────────────────────────────────────────────
+
+/** Estructura mínima de un lugar necesaria para generar el SQL */
+interface LugarParaSQL {
+  nombre: string
+  georef: { latitud: number; longitud: number } | null
+  direccion: {
+    nombreCalle: string | null
+    numeroCalle: string | null
+    ciudadEstadoProvincia: string | null
+    pais: string | null
+    rawDireccion: string
+  } | null
+}
+
+/**
+ * Genera el script SQL completo para las 3 tablas de lugares turísticos:
+ *   - lugares         (tabla principal con id y nombre)
+ *   - georeferencias  (FK → lugares, solo registros con coordenadas)
+ *   - direcciones     (FK → lugares, todos los registros)
+ *
+ * Las tablas hijas se eliminan primero para respetar las restricciones FK.
+ * Los INSERT usan IDs correlativos comenzando en 1.
+ *
+ * @param lugares - Lista de lugares a insertar
+ * @returns String con el script SQL listo para ejecutar en PostgreSQL
+ */
+export function generateLugaresSQL(lugares: LugarParaSQL[]): string {
+  const now = new Date().toISOString()
+  const lines: string[] = []
+
+  // ── Encabezado ──────────────────────────────
+  lines.push(`-- ============================================================`)
+  lines.push(`-- Exportado por COMUNAS_NORM — Módulo Lugares Turísticos`)
+  lines.push(`-- Fecha: ${now}`)
+  lines.push(`-- Total de lugares: ${lugares.length}`)
+  lines.push(`-- Tablas generadas: lugares, georeferencias, direcciones`)
+  lines.push(`-- ============================================================`)
+  lines.push('')
+
+  // ── DROP TABLE IF EXISTS (hijas primero para respetar FK) ────
+  lines.push(`-- Eliminar tablas hijas antes que la tabla padre`)
+  lines.push(`DROP TABLE IF EXISTS direcciones;`)
+  lines.push(`DROP TABLE IF EXISTS georeferencias;`)
+  lines.push(`DROP TABLE IF EXISTS lugares;`)
+  lines.push('')
+
+  // ── CREATE TABLE lugares ─────────────────────
+  lines.push(`-- Tabla principal`)
+  lines.push(`CREATE TABLE lugares (`)
+  lines.push(`  id     SERIAL PRIMARY KEY,`)
+  lines.push(`  nombre VARCHAR(255) NOT NULL`)
+  lines.push(`);`)
+  lines.push('')
+
+  // ── CREATE TABLE georeferencias ──────────────
+  lines.push(`-- Coordenadas geográficas (solo para lugares con georef)`)
+  lines.push(`CREATE TABLE georeferencias (`)
+  lines.push(`  id       SERIAL PRIMARY KEY,`)
+  lines.push(`  lugar_id INT NOT NULL REFERENCES lugares(id) ON DELETE CASCADE,`)
+  lines.push(`  latitud  DECIMAL(10,7) NOT NULL,`)
+  lines.push(`  longitud DECIMAL(10,7) NOT NULL`)
+  lines.push(`);`)
+  lines.push('')
+
+  // ── CREATE TABLE direcciones ─────────────────
+  lines.push(`-- Dirección postal estructurada de cada lugar`)
+  lines.push(`CREATE TABLE direcciones (`)
+  lines.push(`  id                      SERIAL PRIMARY KEY,`)
+  lines.push(`  lugar_id                INT NOT NULL REFERENCES lugares(id) ON DELETE CASCADE,`)
+  lines.push(`  nombre_calle            VARCHAR(255),`)
+  lines.push(`  numero_calle            VARCHAR(50),`)
+  lines.push(`  ciudad_estado_provincia VARCHAR(255),`)
+  lines.push(`  pais                    VARCHAR(100),`)
+  lines.push(`  raw_direccion           TEXT NOT NULL`)
+  lines.push(`);`)
+  lines.push('')
+
+  // ── INSERT INTO lugares ──────────────────────
+  const BATCH_SIZE = 500
+  if (lugares.length > 0) {
+    lines.push(`-- Insertar ${lugares.length} lugar(es) con IDs correlativos`)
+    for (let i = 0; i < lugares.length; i += BATCH_SIZE) {
+      const chunk = lugares.slice(i, i + BATCH_SIZE)
+      lines.push(`INSERT INTO lugares (id, nombre) VALUES`)
+      chunk.forEach((l, idx) => {
+        const id     = i + idx + 1
+        const nombre = `'${escapeSql(l.nombre)}'`
+        const coma   = idx < chunk.length - 1 ? ',' : ''
+        lines.push(`  (${id}, ${nombre})${coma}`)
+      })
+      lines.push(`;`)
+      lines.push('')
+    }
+  }
+
+  // ── INSERT INTO georeferencias ───────────────
+  const conGeoref = lugares
+    .map((l, i) => ({ l, id: i + 1 }))
+    .filter(({ l }) => l.georef !== null)
+
+  if (conGeoref.length > 0) {
+    lines.push(`-- Insertar georeferencias (${conGeoref.length} de ${lugares.length} lugar(es))`)
+    for (let i = 0; i < conGeoref.length; i += BATCH_SIZE) {
+      const chunk = conGeoref.slice(i, i + BATCH_SIZE)
+      lines.push(`INSERT INTO georeferencias (lugar_id, latitud, longitud) VALUES`)
+      chunk.forEach(({ l, id }, idx) => {
+        const lat  = l.georef!.latitud.toFixed(7)
+        const lon  = l.georef!.longitud.toFixed(7)
+        const coma = idx < chunk.length - 1 ? ',' : ''
+        lines.push(`  (${id}, ${lat}, ${lon})${coma}`)
+      })
+      lines.push(`;`)
+      lines.push('')
+    }
+  }
+
+  // ── INSERT INTO direcciones ──────────────────
+  if (lugares.length > 0) {
+    lines.push(`-- Insertar direcciones (una por cada lugar)`)
+    for (let i = 0; i < lugares.length; i += BATCH_SIZE) {
+      const chunk = lugares.slice(i, i + BATCH_SIZE)
+      lines.push(`INSERT INTO direcciones`)
+      lines.push(`  (lugar_id, nombre_calle, numero_calle, ciudad_estado_provincia, pais, raw_direccion)`)
+      lines.push(`VALUES`)
+      chunk.forEach((l, idx) => {
+        const lugarId = i + idx + 1
+        const calle   = l.direccion?.nombreCalle ? `'${escapeSql(l.direccion.nombreCalle)}'` : 'NULL'
+        const numero  = l.direccion?.numeroCalle ? `'${escapeSql(l.direccion.numeroCalle)}'` : 'NULL'
+        const ciudad  = l.direccion?.ciudadEstadoProvincia ? `'${escapeSql(l.direccion.ciudadEstadoProvincia)}'` : 'NULL'
+        const pais    = l.direccion?.pais ? `'${escapeSql(l.direccion.pais)}'` : 'NULL'
+        const raw     = l.direccion ? `'${escapeSql(l.direccion.rawDireccion)}'` : `''`
+        const coma    = idx < chunk.length - 1 ? ',' : ''
+        lines.push(`  (${lugarId}, ${calle}, ${numero}, ${ciudad}, ${pais}, ${raw})${coma}`)
+      })
+      lines.push(`;`)
+      lines.push('')
+    }
+  }
+
+  // ── Pie de página ────────────────────────────
+  lines.push(`-- ============================================================`)
+  lines.push(`-- Fin del script — ${lugares.length} lugar(es) insertado(s)`)
+  lines.push(`-- ============================================================`)
+
+  return lines.join('\n')
+}

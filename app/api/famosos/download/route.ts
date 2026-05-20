@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
+import { generateFamososSQL } from '../../../lib/exporters'
 
 /**
  * GET /api/famosos/download?batchId=XXX&type=csv|json|txt&sorted=true
@@ -107,8 +108,9 @@ export async function GET(req: NextRequest) {
       ].join('\n')
 
       const lineas = famosos.map((f, i) => {
-        const fecha = f.fechaNormalizada ?? f.fechaAprox ?? f.fechaOriginal
-        const cumple = f.esCumpleanos ? ' 🎂' : ''
+        const fecha  = f.fechaNormalizada ?? f.fechaAprox ?? f.fechaOriginal
+        // Sin emoji — el indicador de cumpleanos va como texto
+        const cumple = f.esCumpleanos ? ' (cumpleanos)' : ''
         return `${String(i + 1).padStart(3, '0')}. ${f.nombre} — ${fecha}${cumple}`
       })
 
@@ -120,8 +122,27 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // ── SQL ───────────────────────────────────────────────────────────
+    if (type === 'sql') {
+      const sql = generateFamososSQL(famosos.map((f) => ({
+        nombre:            f.nombre,
+        fechaOriginal:     f.fechaOriginal,
+        fechaNormalizada:  f.fechaNormalizada,
+        fechaAprox:        f.fechaAprox,
+        edad:              f.edad,
+        esCumpleanos:      f.esCumpleanos,
+      })))
+
+      return new NextResponse(sql, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Disposition': `attachment; filename="famosos_norm.sql"`,
+        },
+      })
+    }
+
     return NextResponse.json(
-      { error: 'Tipo invalido. Usa: csv, json, txt' },
+      { error: 'Tipo invalido. Usa: csv, json, txt, sql' },
       { status: 400 },
     )
   } catch (error) {

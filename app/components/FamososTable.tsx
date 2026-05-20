@@ -18,6 +18,7 @@ import {
   Cake,
   ArrowUpDown,
   Check,
+  Database,
 } from 'lucide-react'
 
 /** Estructura de un famoso recibido de la API */
@@ -336,6 +337,26 @@ export default function FamososTable({ batchId }: FamososTableProps) {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Botón SQL — script PostgreSQL completo */}
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+                <button
+                  onClick={() => descargar('sql')}
+                  className="flex items-center gap-2 w-full justify-center
+                    text-sm bg-gray-800 hover:bg-gray-900 dark:bg-gray-700
+                    dark:hover:bg-gray-600 text-white px-4 py-2.5 rounded-xl
+                    transition-colors"
+                >
+                  {descargando === 'sql'
+                    ? <Check className="w-4 h-4" />
+                    : <Database className="w-4 h-4" />
+                  }
+                  Descargar SQL
+                </button>
+                <p className="text-xs text-center text-gray-400 mt-1.5">
+                  Script PostgreSQL — tabla famosos_norm
+                </p>
               </div>
 
             </div>

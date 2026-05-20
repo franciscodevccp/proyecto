@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
+import { generateLugaresSQL } from '../../../lib/exporters'
 
 /**
  * GET /api/lugares/download?batchId=XXX&type=csv|json|txt&sorted=true
@@ -134,8 +135,34 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // ── SQL (3 tablas con FK) ─────────────────────────────────────────
+    if (type === 'sql') {
+      const sql = generateLugaresSQL(lugares.map((l) => ({
+        nombre: l.nombre,
+        georef: l.georef
+          ? { latitud: l.georef.latitud, longitud: l.georef.longitud }
+          : null,
+        direccion: l.direccion
+          ? {
+              nombreCalle:            l.direccion.nombreCalle,
+              numeroCalle:            l.direccion.numeroCalle,
+              ciudadEstadoProvincia:  l.direccion.ciudadEstadoProvincia,
+              pais:                   l.direccion.pais,
+              rawDireccion:           l.direccion.rawDireccion,
+            }
+          : null,
+      })))
+
+      return new NextResponse(sql, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Content-Disposition': `attachment; filename="lugares_norm.sql"`,
+        },
+      })
+    }
+
     return NextResponse.json(
-      { error: 'Tipo invalido. Usa: csv, json, txt' },
+      { error: 'Tipo invalido. Usa: csv, json, txt, sql' },
       { status: 400 },
     )
   } catch (error) {
