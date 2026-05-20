@@ -1,9 +1,10 @@
 /**
  * api/famosos/process/route.ts
- * Endpoint POST que recibe un archivo .txt de famosos,
+ * Endpoint POST que recibe un archivo de famosos,
  * lo procesa con procesarFamosos() y persiste el resultado en PostgreSQL.
  *
- * El archivo debe tener formato: "N. Nombre Completo - Fecha"
+ * Formatos soportados: "N. Nombre - Fecha", "Nombre | Fecha", "Nombre, Fecha", etc.
+ * El parser detecta el separador automáticamente.
  * Soporta dryRun para previsualizar sin guardar.
  */
 
@@ -21,7 +22,8 @@ function aplicarReglas(texto: string, rules: ETLRuleSet): string {
   if (rules['trim']) s = s.trim()
   if (rules['collapseSpaces']) s = s.replace(/\s+/g, ' ').trim()
   if (rules['removeAccents']) {
-    s = s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    // Usar escape Unicode explícito para evitar problemas de encoding en el fuente
+    s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   }
   if (rules['titleCase']) {
     s = s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())

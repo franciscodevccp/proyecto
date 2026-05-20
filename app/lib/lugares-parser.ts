@@ -1,11 +1,13 @@
 /**
  * lugares-parser.ts
- * Parsea el archivo CSV de lugares turísticos separado por ";".
+ * Parsea el archivo CSV de lugares turísticos.
  * Genera 3 entidades relacionadas: Lugar, Georeferencia, Direccion.
  *
- * IMPORTANTE: El archivo original usa encoding Windows-1252.
- * Leer con: Buffer.from(await file.arrayBuffer()).toString('latin1')
- * y luego pasar por fixEncoding() antes de procesar.
+ * Separadores de columna soportados: ";" | "|" | "\t"
+ * El separador se detecta automáticamente leyendo las primeras 5 líneas de datos.
+ * No se usa "," como separador de columnas porque las direcciones lo contienen.
+ *
+ * Encoding: se intenta detectar si el archivo es Windows-1252 (latin1) o UTF-8.
  *
  * Regla de duplicados: mismo nombre + misma georef (coords redondeadas a 3 decimales).
  * Ejemplo: Apple Park aparece 2 veces con coords distintas → AMBOS son válidos.
@@ -45,19 +47,67 @@ export interface LugaresResult {
 }
 
 /**
+ * Detecta si un buffer leído como latin1 contiene secuencias de bytes que
+ * indican que el archivo es realmente UTF-8 mal interpretado.
+ * Los caracteres "Ã", "â€", "Â", "Ã©", etc. son el resultado típico de leer
+ * UTF-8 con un encoding de un solo byte (latin1 / Windows-1252).
+ *
+ * @param buffer - Buffer crudo del archivo
+ * @returns "utf8" si se detectan artefactos de UTF-8, "latin1" en caso contrario
+ */
+export function detectarEncoding(buffer: Buffer): string {
+  const comoLatin1 = buffer.toString('latin1')
+  // Patrones que aparecen cuando UTF-8 se lee como latin1
+  const patronesUTF8 = /Ã|â€|Â|Ã©|Ã³|Ã±/
+  return patronesUTF8.test(comoLatin1) ? 'utf8' : 'latin1'
+}
+
+/**
+ * Detecta el separador de columnas predominante en un conjunto de líneas CSV.
+ * Candidatos: ";" | "|" | "\t"
+ * La coma NO es candidata porque las direcciones contienen comas.
+ *
+ * Estrategia: contar cuántas veces aparece cada candidato por línea;
+ * elegir el primero que tenga un promedio ≥ 2 ocurrencias por línea
+ * (formato mínimo de 3 columnas: nombre + dirección + georef).
+ * Si ninguno supera el umbral se usa ";" como fallback.
+ *
+ * @param lineas - Primeras líneas de datos (sin header)
+ * @returns El separador detectado
+ */
+export function detectarSeparadorCSV(lineas: string[]): string {
+  // Tomar hasta las primeras 5 líneas para la muestra
+  const muestra = lineas.slice(0, 5)
+  if (muestra.length === 0) return ';'
+
+  const candidatos = [';', '|', '\t']
+
+  for (const sep of candidatos) {
+    // Contar ocurrencias del separador en cada línea de muestra
+    const conteos = muestra.map(l => l.split(sep).length - 1)
+    const promedio = conteos.reduce((a, b) => a + b, 0) / conteos.length
+    // Umbral: al menos 2 separadores por línea → al menos 3 columnas
+    if (promedio >= 2) return sep
+  }
+
+  // Fallback: punto y coma (formato original del dataset)
+  return ';'
+}
+
+/**
  * Limpia caracteres corruptos generados por la diferencia de encoding
  * entre Windows-1252 y UTF-8. Reemplaza los más comunes del archivo.
  */
 export function fixEncoding(text: string): string {
   return text
-    .replace(/�/g, '?')      // Carácter de reemplazo genérico
-    .replace(/\xf3/g, 'o')        // ó → o
-    .replace(/\xfc/g, 'u')        // ü → u
-    .replace(/\xdf/g, 'ss')       // ß → ss (Neuschwansteinstrasse)
-    .replace(/\xe9/g, 'e')        // é → e
-    .replace(/\xe1/g, 'a')        // á → a
-    .replace(/\xf1/g, 'n')        // ñ → n
-    .replace(/[\x80-\x9f]/g, '')  // Eliminar caracteres de control de Windows
+    .replace(/�/g, '?')         // Carácter de reemplazo genérico (U+FFFD)
+    .replace(/\xf3/g, 'o')           // ó → o
+    .replace(/\xfc/g, 'u')           // ü → u
+    .replace(/\xdf/g, 'ss')          // ß → ss (Neuschwansteinstrasse)
+    .replace(/\xe9/g, 'e')           // é → e
+    .replace(/\xe1/g, 'a')           // á → a
+    .replace(/\xf1/g, 'n')           // ñ → n
+    .replace(/[\x80-\x9f]/g, '')     // Eliminar caracteres de control de Windows
 }
 
 /**
@@ -104,9 +154,26 @@ export function parsearDireccion(raw: string): DireccionParsed {
 }
 
 /**
+ * Detecta si la primera línea del archivo es un encabezado de columnas.
+ * Reconoce las palabras clave más habituales en español e inglés.
+ */
+function esLineaHeader(linea: string): boolean {
+  const l = linea.toLowerCase()
+  return (
+    l.includes('nombre') ||
+    l.includes('lugar')  ||
+    l.includes('sitio')  ||
+    l.includes('place')  ||
+    l.includes('name')   ||
+    l.includes('location') ||
+    l.includes('direcci')  // "dirección", "direccion"
+  )
+}
+
+/**
  * Procesa el contenido completo del archivo de lugares:
  * 1. Limpia encoding Windows-1252
- * 2. Parsea CSV separado por ";"
+ * 2. Detecta el separador de columnas automáticamente (";", "|" o tab)
  * 3. Detecta y elimina duplicados (mismo nombre + misma georef redondeada)
  * 4. Parsea dirección y georef de cada registro único
  */
@@ -114,12 +181,12 @@ export function procesarLugares(content: string): LugaresResult {
   const cleaned = fixEncoding(content)
   const lines = cleaned.split('\n').map(l => l.trim()).filter(l => l.length > 0)
 
-  // Detectar si la primera línea es un encabezado
-  const hasHeader =
-    lines[0].toLowerCase().includes('nombre') ||
-    lines[0].toLowerCase().includes('lugar') ||
-    lines[0].toLowerCase().includes('direcci')
+  // Detectar si la primera línea es un encabezado de columnas
+  const hasHeader = lines.length > 0 && esLineaHeader(lines[0])
   const dataLines = hasHeader ? lines.slice(1) : lines
+
+  // Detectar separador de columnas con las primeras líneas de datos
+  const sep = detectarSeparadorCSV(dataLines)
 
   const lugares: LugarRecord[] = []
   const duplicates: { lineNumber: number; nombre: string; duplicadoDe: number }[] = []
@@ -129,7 +196,7 @@ export function procesarLugares(content: string): LugaresResult {
 
   dataLines.forEach((line, idx) => {
     const lineNumber = idx + (hasHeader ? 2 : 1)
-    const partes = line.split(';').map(p => p.trim())
+    const partes = line.split(sep).map(p => p.trim())
     if (partes.length < 1 || !partes[0]) return
 
     const nombre = partes[0]
@@ -139,11 +206,11 @@ export function procesarLugares(content: string): LugaresResult {
     const georef = parsearGeoref(rawGeoref)
     const direccion = parsearDireccion(rawDireccion)
 
-    // Normalizar nombre para comparación
+    // Normalizar nombre para comparación (sin tildes, minúsculas)
     const keyNombre = nombre
-      .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
       .trim()
 
     // Redondear coords a 3 decimales para detectar duplicados exactos

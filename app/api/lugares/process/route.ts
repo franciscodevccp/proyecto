@@ -1,16 +1,17 @@
 /**
  * api/lugares/process/route.ts
- * Endpoint POST que recibe un archivo CSV separado por ";" de lugares turísticos,
+ * Endpoint POST que recibe un archivo CSV de lugares turísticos,
  * lo procesa con procesarLugares() y persiste el resultado en PostgreSQL.
  *
- * El archivo usa encoding Windows-1252 → se lee con latin1 antes de procesar.
+ * Separadores soportados: ";" | "|" | "\t" (detectado automáticamente).
+ * Encoding: se detecta automáticamente entre latin1 (Windows-1252) y UTF-8.
  * Duplicados: mismo nombre + misma georef (coords redondeadas a 3 decimales).
  * Soporta dryRun para previsualizar sin guardar.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
-import { procesarLugares } from '../../../lib/lugares-parser'
+import { procesarLugares, detectarEncoding } from '../../../lib/lugares-parser'
 import { resolveRuleSet, type ETLRuleSet } from '../../../lib/etl-rules'
 
 /**
@@ -21,7 +22,8 @@ function aplicarReglas(texto: string, rules: ETLRuleSet): string {
   if (rules['trim']) s = s.trim()
   if (rules['collapseSpaces']) s = s.replace(/\s+/g, ' ').trim()
   if (rules['removeAccents']) {
-    s = s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    // Usar escape Unicode explícito para evitar problemas de encoding en el fuente
+    s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   }
   if (rules['titleCase']) {
     s = s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
@@ -32,7 +34,7 @@ function aplicarReglas(texto: string, rules: ETLRuleSet): string {
 /**
  * POST /api/lugares/process
  * FormData esperado:
- *   - file:    archivo CSV separado por ";" (.txt, .csv o .tsv)
+ *   - file:    archivo CSV separado por ";" / "|" / tab (.txt, .csv o .tsv)
  *   - rules:   JSON con ETLRuleSet parcial (opcional)
  *   - dryRun: "true" para previsualizar sin guardar (opcional)
  */
@@ -63,9 +65,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Leer con latin1 para manejar encoding Windows-1252 del archivo original
-    const buffer = await file.arrayBuffer()
-    const content = Buffer.from(buffer).toString('latin1')
+    // Detectar encoding antes de decodificar:
+    // Si el archivo es UTF-8 pero se leería como latin1, los acentos aparecerían como "Ã©", "Ã³", etc.
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const encoding = detectarEncoding(buffer)
+    const content = buffer.toString(encoding as BufferEncoding)
 
     if (!content.trim()) {
       return NextResponse.json({ error: 'El archivo esta vacio' }, { status: 400 })
