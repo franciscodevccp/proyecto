@@ -56,10 +56,13 @@ interface FamososTimelineProps {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 /** Ancho de cada tarjeta (px) */
-const CARD_W = 172
+const CARD_W = 210
 
 /** Espacio entre tarjetas (px) */
-const GAP = 14
+const GAP = 16
+
+/** Altura de la foto en cada tarjeta (px) */
+const FOTO_H = 120
 
 /** Tamaño del lote para las peticiones a Wikipedia */
 const WIKI_LOTE = 8
@@ -218,7 +221,14 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
       </div>
 
       {/* Scroll horizontal ────────────────────────────────────────────────── */}
-      <div className="overflow-x-auto overscroll-x-contain">
+      {/* Scrollbar personalizada — reemplaza la barra gris del sistema */}
+      <style>{`
+        .tl-scroll::-webkit-scrollbar { height: 5px; }
+        .tl-scroll::-webkit-scrollbar-track { background: transparent; margin: 0 20px; border-radius: 999px; }
+        .tl-scroll::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 999px; }
+        .tl-scroll::-webkit-scrollbar-thumb:hover { background: #7c3aed; }
+      `}</style>
+      <div className="tl-scroll overflow-x-auto overscroll-x-contain pb-1">
         <div
           className="relative"
           style={{ width: totalW, minWidth: totalW }}
@@ -275,7 +285,7 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
                   <div className="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col bg-white dark:bg-gray-800 flex-1">
 
                     {/* Cabecera visual: foto o gradiente de era */}
-                    <div className="relative w-full overflow-hidden" style={{ height: 76 }}>
+                    <div className="relative w-full overflow-hidden" style={{ height: FOTO_H }}>
                       {esCargandoWiki ? (
                         // Skeleton mientras carga Wikipedia
                         <div className="w-full h-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
