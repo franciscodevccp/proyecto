@@ -2,21 +2,19 @@
 
 /**
  * FamososTimeline.tsx
- * Línea de tiempo horizontal que ordena los famosos por fecha de nacimiento,
- * del más antiguo al más reciente (soporta fechas a.C. con años negativos).
- * Solo incluye famosos con fechaNormalizada — demuestra que la normalización funcionó.
+ * Línea de tiempo horizontal que ordena los famosos por fecha de nacimiento.
  *
- * Cada tarjeta muestra:
- *   año (etiqueta del eje)
- *   nombre del famoso
- *   fechaOriginal (entrada del usuario, en gris)
- *   → fechaNormalizada (salida ISO del sistema, en púrpura)
+ * CORRECCIÓN CRÍTICA: fechaNormalizada tiene formato DD-MM-YYYY.
+ * El año está en el índice 2 de split('-'), NO en el índice 0.
+ * Ejemplo: "14-03-1879" → partes[2] = "1879" (Einstein)
  *
- * Las tarjetas alternan arriba/abajo de la línea para evitar solapamiento.
- * El contenedor es horizontalmente scrollable.
+ * Enriquecimiento progresivo con Wikipedia REST API (gratuita, sin clave):
+ *   GET https://en.wikipedia.org/api/rest_v1/page/summary/{nombre}
+ *   → description (string corta) + thumbnail.source (URL de foto)
+ * Las tarjetas muestran skeleton mientras carga y gradiente de era si no hay foto.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Clock3, Loader2 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -40,53 +38,64 @@ interface FamosoCronologico {
   anio: number
 }
 
+interface WikiInfo {
+  descripcion: string | null
+  foto: string | null
+}
+
+/** Subconjunto de la respuesta de Wikipedia que nos interesa */
+interface WikiResponse {
+  description?: string
+  thumbnail?: { source?: string }
+}
+
 interface FamososTimelineProps {
   batchId: string
 }
 
-// ─── Constantes de layout ─────────────────────────────────────────────────────
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
-/** Ancho de cada celda de la timeline (px) */
-const ITEM_W = 156
+/** Ancho de cada tarjeta (px) */
+const CARD_W = 172
 
-/** Altura total del contenedor SVG (px) */
-const H = 290
+/** Espacio entre tarjetas (px) */
+const GAP = 14
 
-/** Y de la línea horizontal en el contenedor (px desde arriba) */
-const LINE_Y = 140
-
-/** Longitud del conector vertical entre la línea y la tarjeta (px) */
-const CONN = 44
-
-/** Altura máxima de cada tarjeta (px) */
-const CARD_H = 96
+/** Tamaño del lote para las peticiones a Wikipedia */
+const WIKI_LOTE = 8
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Extrae el año numérico de una fecha ISO (soporta a.C.: "-0069-02-17" → -69) */
+/**
+ * Extrae el año numérico de una fecha DD-MM-YYYY.
+ * El año está siempre en la posición 2 del array resultante de split('-').
+ * Ejemplo: "01-06-1926" → 1926
+ */
 function extractAnio(fecha: string): number {
-  if (fecha.startsWith('-')) {
-    return -parseInt(fecha.slice(1).split('-')[0], 10)
-  }
-  return parseInt(fecha.split('-')[0], 10)
+  const partes = fecha.split('-')
+  return parseInt(partes[2], 10)
 }
 
-/** Formatea el año para mostrar en el eje ("69 a.C." | "1879") */
+/** Etiqueta de año para el eje (soporta a.C. aunque en la práctica no llegan aquí) */
 function formatAnio(anio: number): string {
   return anio < 0 ? `${Math.abs(anio)} a.C.` : String(anio)
 }
 
-/**
- * Formatea la fecha normalizada abreviada para la tarjeta.
- * Fechas a.C. → solo el año; fechas d.C. → YYYY-MM-DD
- */
+/** Convierte DD-MM-YYYY → DD/MM/YYYY para la tarjeta */
 function formatFechaNorm(fecha: string): string {
-  if (fecha.startsWith('-')) {
-    const anio = parseInt(fecha.slice(1).split('-')[0], 10)
-    return `${anio} a.C.`
-  }
-  // Mostrar los primeros 10 chars (YYYY-MM-DD)
-  return fecha.substring(0, 10)
+  return fecha.replace(/-/g, '/')
+}
+
+/**
+ * Gradiente de fondo según la era del personaje.
+ * Se muestra cuando Wikipedia no devuelve foto.
+ */
+function eraGradient(anio: number): string {
+  if (anio < 1700) return 'linear-gradient(160deg,#4c1d95 0%,#6d28d9 100%)'
+  if (anio < 1800) return 'linear-gradient(160deg,#164e63 0%,#0891b2 100%)'
+  if (anio < 1900) return 'linear-gradient(160deg,#14532d 0%,#16a34a 100%)'
+  if (anio < 1950) return 'linear-gradient(160deg,#78350f 0%,#d97706 100%)'
+  return 'linear-gradient(160deg,#9d174d 0%,#ec4899 100%)'
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -95,12 +104,28 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
   const [items, setItems] = useState<FamosoCronologico[]>([])
   const [cargando, setCargando] = useState(true)
 
+  /**
+   * Mapa de enriquecimiento Wikipedia:
+   *   undefined → todavía no cargado (skeleton)
+   *   null      → Wikipedia no encontró el personaje
+   *   WikiInfo  → datos disponibles
+   */
+  const [wiki, setWiki] = useState<Map<string, WikiInfo | null>>(new Map())
+
+  /** Evita que el efecto de Wikipedia se dispare dos veces en Strict Mode */
+  const wikiEnCurso = useRef(false)
+
+  // ── Carga del batch ────────────────────────────────────────────────────────
   useEffect(() => {
     setCargando(true)
+    wikiEnCurso.current = false
+    setWiki(new Map())
+
     fetch(`/api/famosos/batch?id=${batchId}`)
       .then((r) => r.json())
       .then((d: BatchAPIResponse) => {
         const famosos: FamosoRaw[] = d.batch?.famosos ?? []
+
         const cronologicos: FamosoCronologico[] = famosos
           .filter((f): f is FamosoRaw & { fechaNormalizada: string } =>
             f.fechaNormalizada !== null && f.fechaNormalizada.length > 0,
@@ -120,7 +145,42 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
       .finally(() => setCargando(false))
   }, [batchId])
 
-  // ── Cargando ──────────────────────────────────────────────────────────────
+  // ── Enriquecimiento Wikipedia (lotes de WIKI_LOTE) ────────────────────────
+  useEffect(() => {
+    if (items.length === 0 || wikiEnCurso.current) return
+    wikiEnCurso.current = true
+
+    async function cargarWiki() {
+      for (let i = 0; i < items.length; i += WIKI_LOTE) {
+        const lote = items.slice(i, i + WIKI_LOTE)
+        await Promise.all(
+          lote.map(async (item) => {
+            try {
+              const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.nombre)}`
+              const res = await fetch(url)
+              if (!res.ok) {
+                setWiki((prev) => new Map(prev).set(item.id, null))
+                return
+              }
+              const data = (await res.json()) as WikiResponse
+              setWiki((prev) =>
+                new Map(prev).set(item.id, {
+                  descripcion: data.description ?? null,
+                  foto: data.thumbnail?.source ?? null,
+                }),
+              )
+            } catch {
+              setWiki((prev) => new Map(prev).set(item.id, null))
+            }
+          }),
+        )
+      }
+    }
+
+    cargarWiki()
+  }, [items])
+
+  // ── Estado: cargando ───────────────────────────────────────────────────────
   if (cargando) {
     return (
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 h-24 flex items-center justify-center gap-2">
@@ -130,154 +190,214 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
     )
   }
 
-  // ── Sin datos normalizados ────────────────────────────────────────────────
+  // ── Sin datos normalizados ─────────────────────────────────────────────────
   if (items.length === 0) return null
 
-  const totalW = ITEM_W * items.length + 40
+  /**
+   * Ancho total del contenedor scrollable.
+   * Cada tarjeta ocupa CARD_W + GAP; más un GAP inicial al final.
+   */
+  const totalW = (CARD_W + GAP) * items.length + GAP
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
 
-      {/* Cabecera */}
+      {/* Cabecera ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-3 border-b border-gray-100 dark:border-gray-800">
         <div className="flex items-center gap-2">
           <Clock3 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            Linea de tiempo
+            Línea de tiempo
           </span>
         </div>
         <span className="text-xs text-gray-400">
           {items.length} famoso{items.length !== 1 ? 's' : ''} ordenados
-          {' '}· {formatAnio(items[0].anio)} → {formatAnio(items[items.length - 1].anio)}
+          {' · '}
+          {formatAnio(items[0].anio)} → {formatAnio(items[items.length - 1].anio)}
         </span>
       </div>
 
-      {/* Timeline scrollable */}
+      {/* Scroll horizontal ────────────────────────────────────────────────── */}
       <div className="overflow-x-auto overscroll-x-contain">
         <div
           className="relative"
-          style={{ width: totalW, height: H, minWidth: totalW }}
+          style={{ width: totalW, minWidth: totalW }}
         >
-          {/* Línea horizontal central */}
+          {/*
+           * Línea horizontal central.
+           * pt-4 = 16px → el dot (h-5 = 20px) queda centrado a y = 16 + 10 = 26px
+           * La línea de 2px se sitúa en top = 25px para alinearse con el centro del dot.
+           * Se extiende desde el centro de la primera tarjeta hasta el de la última.
+           */}
           <div
-            className="absolute bg-purple-200 dark:bg-purple-900/60"
-            style={{ top: LINE_Y - 1, left: 20, width: totalW - 40, height: 2 }}
+            className="absolute z-0 rounded-full"
+            style={{
+              top: 25,
+              left: GAP + CARD_W / 2,
+              width: totalW - GAP - CARD_W,
+              height: 2,
+              background: 'linear-gradient(90deg,#a855f7 0%,#7c3aed 50%,#6366f1 100%)',
+            }}
           />
 
-          {/* Extremos de la línea */}
+          {/* Fila de tarjetas ──────────────────────────────────────────── */}
           <div
-            className="absolute w-2 h-2 rounded-full bg-purple-300 dark:bg-purple-700"
-            style={{ top: LINE_Y - 5, left: 16 }}
-          />
-          <div
-            className="absolute w-2 h-2 rounded-full bg-purple-300 dark:bg-purple-700"
-            style={{ top: LINE_Y - 5, left: totalW - 24 }}
-          />
+            className="flex pt-4 pb-5"
+            style={{ gap: GAP, paddingLeft: GAP, paddingRight: GAP }}
+          >
+            {items.map((item, idx) => {
+              /** undefined = cargando · null = no encontrado · WikiInfo = disponible */
+              const wikiData = wiki.get(item.id)
+              const esCargandoWiki = wikiData === undefined
 
-          {items.map((item, idx) => {
-            /** Centro X de este item */
-            const cx = 20 + idx * ITEM_W + ITEM_W / 2
-            /** Tarjeta arriba (odd) o abajo (even) */
-            const esArriba = idx % 2 === 1
-
-            // Posiciones para tarjeta arriba
-            const cardTopArriba = LINE_Y - CONN - CARD_H
-            const connTopArriba = LINE_Y - CONN
-
-            // Posiciones para tarjeta abajo
-            const connTopAbajo = LINE_Y + 6
-            const cardTopAbajo = LINE_Y + CONN + 6
-
-            return (
-              <div key={item.id}>
-                {/* Punto en la línea */}
+              return (
                 <div
-                  className="absolute rounded-full bg-purple-500 border-2 border-white dark:border-gray-900 shadow-sm"
-                  style={{
-                    width: 12,
-                    height: 12,
-                    left: cx - 6,
-                    top: LINE_Y - 6,
-                    zIndex: 1,
-                  }}
-                />
-
-                {/* Conector vertical */}
-                <div
-                  className="absolute bg-purple-300 dark:bg-purple-700"
-                  style={{
-                    width: 1.5,
-                    height: CONN,
-                    left: cx - 0.75,
-                    top: esArriba ? connTopArriba : connTopAbajo,
-                  }}
-                />
-
-                {/* Tarjeta */}
-                <div
-                  className="absolute"
-                  style={{
-                    left: cx - ITEM_W / 2 + 8,
-                    width: ITEM_W - 16,
-                    top: esArriba ? cardTopArriba : cardTopAbajo,
-                    height: CARD_H,
-                  }}
+                  key={item.id}
+                  className="shrink-0 flex flex-col"
+                  style={{ width: CARD_W }}
                 >
-                  <div className="h-full rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm px-2.5 py-2 flex flex-col justify-center gap-0.5 overflow-hidden">
-                    {/* Año */}
-                    <p className="text-xs font-black text-purple-600 dark:text-purple-400 leading-none">
-                      {formatAnio(item.anio)}
-                    </p>
-
-                    {/* Nombre */}
-                    <p
-                      className="text-xs font-semibold text-gray-800 dark:text-gray-100 leading-tight"
-                      title={item.nombre}
-                      style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                  {/* Punto numerado sobre la línea ─────────────────────── */}
+                  <div className="flex justify-center mb-3 relative z-10">
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-900 shadow-md"
+                      style={{ background: '#7c3aed' }}
                     >
-                      {item.nombre}
-                    </p>
+                      <span
+                        className="text-white font-black leading-none select-none"
+                        style={{ fontSize: 8 }}
+                      >
+                        {idx + 1}
+                      </span>
+                    </div>
+                  </div>
 
-                    {/* Entrada original (gris, tachado conceptual) */}
-                    <p
-                      className="text-gray-400 dark:text-gray-500 font-mono leading-none truncate"
-                      style={{ fontSize: 9 }}
-                      title={item.fechaOriginal}
-                    >
-                      {item.fechaOriginal}
-                    </p>
+                  {/* Tarjeta ────────────────────────────────────────────── */}
+                  <div className="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col bg-white dark:bg-gray-800 flex-1">
 
-                    {/* Flecha + fecha normalizada */}
-                    <p
-                      className="text-purple-500 dark:text-purple-400 font-mono font-medium leading-none truncate"
-                      style={{ fontSize: 9 }}
-                    >
-                      → {formatFechaNorm(item.fechaNormalizada)}
-                    </p>
+                    {/* Cabecera visual: foto o gradiente de era */}
+                    <div className="relative w-full overflow-hidden" style={{ height: 76 }}>
+                      {esCargandoWiki ? (
+                        // Skeleton mientras carga Wikipedia
+                        <div className="w-full h-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+                      ) : wikiData?.foto ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={wikiData.foto}
+                          alt={item.nombre}
+                          className="w-full h-full object-cover object-top"
+                          loading="lazy"
+                          onError={(e) => {
+                            // Si la imagen falla, mostrar el gradiente de era
+                            const parent = e.currentTarget.parentElement
+                            if (parent) {
+                              parent.style.background = eraGradient(item.anio)
+                              e.currentTarget.style.display = 'none'
+                            }
+                          }}
+                        />
+                      ) : (
+                        // Gradiente de era cuando Wikipedia no tiene foto
+                        <div
+                          className="w-full h-full"
+                          style={{ background: eraGradient(item.anio) }}
+                        />
+                      )}
+
+                      {/* Badge del año superpuesto */}
+                      <span
+                        className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded font-black text-white leading-none"
+                        style={{
+                          background: 'rgba(0,0,0,0.58)',
+                          fontSize: 10,
+                          backdropFilter: 'blur(2px)',
+                        }}
+                      >
+                        {formatAnio(item.anio)}
+                      </span>
+                    </div>
+
+                    {/* Cuerpo de texto ─────────────────────────────────── */}
+                    <div className="flex-1 flex flex-col gap-1 px-2.5 pt-2 pb-2">
+
+                      {/* Nombre */}
+                      <p
+                        className="text-xs font-bold text-gray-800 dark:text-gray-100 leading-tight"
+                        title={item.nombre}
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {item.nombre}
+                      </p>
+
+                      {/* Descripción de Wikipedia */}
+                      {esCargandoWiki ? (
+                        <div className="space-y-1 mt-0.5">
+                          <div className="h-1.5 rounded bg-gray-200 dark:bg-gray-600 animate-pulse w-full" />
+                          <div className="h-1.5 rounded bg-gray-200 dark:bg-gray-600 animate-pulse w-2/3" />
+                        </div>
+                      ) : wikiData?.descripcion ? (
+                        <p
+                          className="text-gray-500 dark:text-gray-400 leading-snug"
+                          title={wikiData.descripcion}
+                          style={{
+                            fontSize: 9,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {wikiData.descripcion}
+                        </p>
+                      ) : null}
+
+                      {/* Prueba de normalización (siempre al fondo) */}
+                      <div className="mt-auto pt-1.5 border-t border-gray-100 dark:border-gray-700">
+                        <p
+                          className="font-mono text-gray-400 dark:text-gray-500 truncate"
+                          style={{ fontSize: 8 }}
+                          title={item.fechaOriginal}
+                        >
+                          {item.fechaOriginal}
+                        </p>
+                        <p
+                          className="font-mono font-semibold text-purple-500 dark:text-purple-400 truncate"
+                          style={{ fontSize: 8 }}
+                        >
+                          → {formatFechaNorm(item.fechaNormalizada)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Leyenda + hint de scroll */}
-      <div className="px-4 sm:px-6 pb-3 pt-1 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4 text-xs text-gray-400">
+      {/* Leyenda inferior ─────────────────────────────────────────────────── */}
+      <div className="px-4 sm:px-6 pb-3 pt-1 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4 text-xs text-gray-400 mt-2">
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600" />
-            Entrada original
+            Fecha original
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-purple-500" />
-            Fecha normalizada ISO
+            Normalizada
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-400" />
+            Wikipedia
           </span>
         </div>
-        {items.length > 5 && (
-          <p className="text-xs text-gray-300 dark:text-gray-600 italic">
-            ← desliza para ver todos →
-          </p>
+        {items.length > 4 && (
+          <p className="text-xs text-gray-300 dark:text-gray-600 italic mt-2">← desliza →</p>
         )}
       </div>
     </div>
