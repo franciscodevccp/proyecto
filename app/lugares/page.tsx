@@ -12,7 +12,7 @@ import { useDropzone } from 'react-dropzone'
 import { Toaster, toast } from 'react-hot-toast'
 import {
   MapPin, Database, Moon, Sun, Upload, X, Loader2,
-  FileText, Table, ScrollText, History, BookOpen, ArrowLeft,
+  FileText, Table, ScrollText, History, BookOpen, ArrowLeft, BarChart2,
 } from 'lucide-react'
 import Link from 'next/link'
 import LugaresStats from '../components/LugaresStats'
@@ -154,6 +154,15 @@ export default function PaginaLugares() {
             >
               Famosos
             </Link>
+            {resultado && (
+              <Link
+                href={`/reporte?batch=${resultado.batchId}&modulo=lugares`}
+                className="hidden sm:flex items-center gap-1.5 text-sm text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium transition-colors"
+              >
+                <BarChart2 className="w-4 h-4" />
+                Reporte
+              </Link>
+            )}
             <Link
               href="/api-docs"
               className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"

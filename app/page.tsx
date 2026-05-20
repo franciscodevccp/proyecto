@@ -9,7 +9,7 @@
 
 import { useState, useEffect } from 'react'
 import { Toaster, toast } from 'react-hot-toast'
-import { Database, Table, ScrollText, History, Moon, Sun, BookOpen, X } from 'lucide-react'
+import { Database, Table, ScrollText, History, Moon, Sun, BookOpen, X, BarChart2, Users, MapPin, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 
 import FileUpload, { type ProcessResponse } from './components/FileUpload'
@@ -27,6 +27,8 @@ export default function Home() {
   const [result, setResult] = useState<ProcessResponse | null>(null)
   const [tab, setTab] = useState<Tab>('datos')
   const [isDark, toggleDark] = useDarkMode()
+  /** Módulo detectado cuando el usuario sube un archivo equivocado */
+  const [moduloEquivocado, setModuloEquivocado] = useState<'famosos' | 'lugares' | null>(null)
 
   // Carga automatica de un batch cuando se navega desde Analytics (?batch=<id>)
   useEffect(() => {
@@ -74,6 +76,56 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
       <Toaster position="top-right" />
 
+      {/* Modal: archivo del módulo equivocado */}
+      {moduloEquivocado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md p-6 space-y-4">
+            {/* Icono + título */}
+            <div className="flex items-center gap-3">
+              <div className={`p-2.5 rounded-xl ${moduloEquivocado === 'famosos' ? 'bg-purple-100 dark:bg-purple-950' : 'bg-teal-100 dark:bg-teal-950'}`}>
+                {moduloEquivocado === 'famosos'
+                  ? <Users className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  : <MapPin className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                }
+              </div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                Archivo incorrecto
+              </h2>
+            </div>
+
+            {/* Mensaje */}
+            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+              Este archivo parece corresponder al módulo de{' '}
+              <strong className={moduloEquivocado === 'famosos' ? 'text-purple-600 dark:text-purple-400' : 'text-teal-600 dark:text-teal-400'}>
+                {moduloEquivocado === 'famosos' ? 'Famosos' : 'Lugares turísticos'}
+              </strong>.
+              Esta página procesa solo comunas. ¿Quieres ir a la página correcta?
+            </p>
+
+            {/* Acciones */}
+            <div className="flex gap-2 pt-1">
+              <Link
+                href={moduloEquivocado === 'famosos' ? '/famosos' : '/lugares'}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors
+                  ${moduloEquivocado === 'famosos'
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : 'bg-teal-600 hover:bg-teal-700'
+                  }`}
+              >
+                Ir a {moduloEquivocado === 'famosos' ? 'Famosos' : 'Lugares'}
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+              <button
+                onClick={() => setModuloEquivocado(null)}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
@@ -112,6 +164,15 @@ export default function Home() {
             >
               Analytics
             </Link>
+            {result && (
+              <Link
+                href={`/reporte?batch=${result.batchId}&modulo=comunas`}
+                className="hidden sm:flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+              >
+                <BarChart2 className="w-4 h-4" />
+                Reporte
+              </Link>
+            )}
             {/* Toggle dark mode */}
             <button
               onClick={toggleDark}
@@ -141,7 +202,7 @@ export default function Home() {
               <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.tsv</code> — un valor por linea (o elige columna en CSV/TSV)
             </p>
           </div>
-          <FileUpload onResult={handleResult} />
+          <FileUpload onResult={handleResult} onWrongModule={setModuloEquivocado} />
         </section>
 
         {/* Resultados */}

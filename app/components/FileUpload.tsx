@@ -18,6 +18,33 @@ import RulesConfig from './RulesConfig'
 
 interface FileUploadProps {
   onResult: (data: ProcessResponse) => void
+  /** Callback opcional: se llama cuando el archivo parece ser de otro módulo */
+  onWrongModule?: (modulo: 'famosos' | 'lugares') => void
+}
+
+/**
+ * Analiza las primeras líneas del archivo y determina si corresponde
+ * a otro módulo (famosos o lugares) en lugar de comunas.
+ *
+ * Famosos:  líneas con formato "N. Nombre - fecha"
+ * Lugares:  líneas con separador ";" y coordenadas lat,lon
+ * Retorna null si parece un archivo de comunas o es indeterminado.
+ */
+function detectarModuloEquivocado(texto: string): 'famosos' | 'lugares' | null {
+  const lineas = texto.split('\n').map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 20)
+  if (lineas.length < 2) return null
+
+  // Famosos: "1. Nombre Apellido - fecha"
+  const patronFamoso = /^\d+\.\s+\S.+\s+-\s+.{3,}/
+  const coincidenciasFamoso = lineas.filter((l) => patronFamoso.test(l)).length
+  if (coincidenciasFamoso >= Math.min(3, Math.ceil(lineas.length * 0.5))) return 'famosos'
+
+  // Lugares: CSV con ";" y coordenadas decimales (lat,lon)
+  const patronCoords = /;.*-?\d{1,3}\.\d+,\s*-?\d{1,3}\.\d+/
+  const coincidenciasLugar = lineas.filter((l) => patronCoords.test(l)).length
+  if (coincidenciasLugar >= 2) return 'lugares'
+
+  return null
 }
 
 /** Respuesta del endpoint /api/process */
@@ -36,7 +63,7 @@ export interface ProcessResponse {
   preview?: { original: string; normalized: string; changeType: string }[]
 }
 
-export default function FileUpload({ onResult }: FileUploadProps) {
+export default function FileUpload({ onResult, onWrongModule }: FileUploadProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,6 +89,16 @@ export default function FileUpload({ onResult }: FileUploadProps) {
     // Leer el archivo en el cliente para detectar columnas (solo los primeros 50 KB)
     const slice = file.slice(0, 50 * 1024)
     const text = await slice.text()
+
+    // Detectar si el archivo pertenece a otro módulo antes de continuar
+    if (onWrongModule) {
+      const moduloDetectado = detectarModuloEquivocado(text)
+      if (moduloDetectado) {
+        onWrongModule(moduloDetectado)
+        return // no cargar el archivo en esta página
+      }
+    }
+
     const result = parseContent(text, { columnIndex: 0 })
     setParsed(result)
   }, [])
