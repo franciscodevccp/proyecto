@@ -17,6 +17,8 @@ import Link from 'next/link'
 import FamososStats from '../components/FamososStats'
 import FamososTable from '../components/FamososTable'
 import FamososBatchHistory, { type FamososResponse } from '../components/FamososBatchHistory'
+import FamososBirthdayBanner from '../components/FamososBirthdayBanner'
+import FamososTimeline from '../components/FamososTimeline'
 import RulesConfig from '../components/RulesConfig'
 import { useDarkMode } from '../hooks/useDarkMode'
 import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
@@ -212,6 +214,12 @@ export default function PaginaFamosos() {
               duplicateCount={resultado.duplicateCount}
               cumpleanosCount={resultado.cumpleanosCount}
             />
+
+            {/* Banner animado de cumpleaños (hoy o próximo) */}
+            <FamososBirthdayBanner batchId={resultado.batchId} />
+
+            {/* Línea de tiempo cronológica */}
+            <FamososTimeline batchId={resultado.batchId} />
 
             {/* Tabs: Datos / Log / Historial */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
