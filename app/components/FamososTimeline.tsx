@@ -281,8 +281,14 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
                     </div>
                   </div>
 
-                  {/* Tarjeta ────────────────────────────────────────────── */}
-                  <div className="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col bg-white dark:bg-gray-800 flex-1">
+                  {/* Tarjeta — enlace a Wikipedia en pestaña nueva */}
+                  <a
+                    href={`https://es.wikipedia.org/wiki/${encodeURIComponent(item.nombre)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col bg-white dark:bg-gray-800 flex-1 transition-all duration-200 hover:shadow-lg hover:border-purple-300 dark:hover:border-purple-600 hover:-translate-y-1 cursor-pointer"
+                    title={`Ver ${item.nombre} en Wikipedia`}
+                  >
 
                     {/* Cabecera visual: foto o gradiente de era */}
                     <div className="relative w-full overflow-hidden" style={{ height: FOTO_H }}>
@@ -382,7 +388,7 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </a>
                 </div>
               )
             })}
