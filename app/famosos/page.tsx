@@ -17,7 +17,9 @@ import Link from 'next/link'
 import FamososStats from '../components/FamososStats'
 import FamososTable from '../components/FamososTable'
 import FamososBatchHistory, { type FamososResponse } from '../components/FamososBatchHistory'
+import RulesConfig from '../components/RulesConfig'
 import { useDarkMode } from '../hooks/useDarkMode'
+import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
 
 type Tab = 'datos' | 'log' | 'historial'
 
@@ -26,19 +28,22 @@ export default function PaginaFamosos() {
   const [resultado, setResultado] = useState<FamososResponse | null>(null)
   const [cargando, setCargando] = useState(false)
   const [tab, setTab] = useState<Tab>('datos')
+  const [rules, setRules] = useState<ETLRuleSet>(DEFAULT_RULESET)
 
   /**
    * Procesa el archivo .txt con el endpoint de famosos.
    */
   async function procesarArchivo(archivo: File) {
-    if (!archivo.name.toLowerCase().endsWith('.txt')) {
-      toast.error('Solo se aceptan archivos .txt')
+    const ext = archivo.name.toLowerCase()
+    if (!ext.endsWith('.txt') && !ext.endsWith('.csv') && !ext.endsWith('.tsv')) {
+      toast.error('Solo se aceptan archivos .txt, .csv o .tsv')
       return
     }
     setCargando(true)
     try {
       const form = new FormData()
       form.append('file', archivo)
+      form.append('rules', JSON.stringify(rules))
       const res = await fetch('/api/famosos/process', { method: 'POST', body: form })
       const data = await res.json()
       if (!res.ok) {
@@ -62,7 +67,11 @@ export default function PaginaFamosos() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'text/plain': ['.txt'] },
+    accept: {
+      'text/plain': ['.txt'],
+      'text/csv': ['.csv'],
+      'text/tab-separated-values': ['.tsv'],
+    },
     maxFiles: 1,
     disabled: cargando,
   })
@@ -164,7 +173,9 @@ export default function PaginaFamosos() {
                     </p>
                     <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
                       Acepta{' '}
-                      <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.txt</code>
+                      <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.txt</code>{' '}
+                      <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.csv</code>{' '}
+                      <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.tsv</code>
                       {' '}— o haz clic para seleccionar
                     </p>
                   </>
@@ -172,6 +183,9 @@ export default function PaginaFamosos() {
               </div>
             </div>
           </div>
+
+          {/* Configurador de reglas ETL — idéntico al de comunas */}
+          <RulesConfig value={rules} onChange={setRules} />
         </section>
 
         {/* Resultados */}

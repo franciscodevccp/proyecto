@@ -143,7 +143,7 @@ export function procesarLugares(content: string): LugaresResult {
     const keyNombre = nombre
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\u0300-\u036f]/g, '')
       .trim()
 
     // Redondear coords a 3 decimales para detectar duplicados exactos

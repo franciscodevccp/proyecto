@@ -33,11 +33,13 @@ export interface FamososResult {
 /**
  * Normaliza un nombre para comparación:
  * elimina tildes, convierte a minúsculas y colapsa espacios.
+ * Usa escapes Unicode explícitos para el rango de diacríticos (U+0300–U+036F)
+ * y evitar problemas de encoding en el archivo fuente.
  */
 function normalizarNombre(nombre: string): string {
   return nombre
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')  // Eliminar diacríticos
+    .replace(/[\u0300-\u036f]/g, '')  // Eliminar diacríticos
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim()
@@ -94,10 +96,10 @@ export function procesarFamosos(content: string): FamososResult {
 
     // Registrar resultado del parseo de fecha
     if (cumpleanos) {
-      logs.push(`Línea ${idx + 1}: 🎂 CUMPLEAÑOS HOY — "${nombre}"`)
+      logs.push(`Línea ${idx + 1}: CUMPLEANOS HOY — "${nombre}"`)
     }
     if (parsed.normalizada) {
-      logs.push(`Línea ${idx + 1}: "${fechaOriginal}" → "${parsed.normalizada}"`)
+      logs.push(`Línea ${idx + 1}: "${fechaOriginal}" -> "${parsed.normalizada}"`)
     } else {
       logs.push(`Línea ${idx + 1}: fecha aproximada — "${parsed.aprox}"`)
     }

@@ -10,11 +10,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
 import { procesarFamosos } from '../../../lib/famosos-parser'
+import { resolveRuleSet, type ETLRuleSet } from '../../../lib/etl-rules'
+
+/**
+ * Aplica las reglas ETL configuradas al texto del nombre.
+ * Equivalente a lo que hace el pipeline de comunas sobre cada valor.
+ */
+function aplicarReglas(texto: string, rules: ETLRuleSet): string {
+  let s = texto
+  if (rules['trim']) s = s.trim()
+  if (rules['collapseSpaces']) s = s.replace(/\s+/g, ' ').trim()
+  if (rules['removeAccents']) {
+    s = s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+  }
+  if (rules['titleCase']) {
+    s = s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+  return s
+}
 
 /**
  * POST /api/famosos/process
  * FormData esperado:
- *   - file:    archivo .txt con la lista de famosos
+ *   - file:    archivo .txt, .csv o .tsv con la lista de famosos
+ *   - rules:   JSON con ETLRuleSet parcial (opcional)
  *   - dryRun: "true" para previsualizar sin guardar (opcional)
  */
 export async function POST(req: NextRequest) {
@@ -23,14 +42,23 @@ export async function POST(req: NextRequest) {
     const file = form.get('file') as File | null
     const dryRun = form.get('dryRun') === 'true'
 
+    // Parsear reglas ETL opcionales enviadas como JSON
+    let partialRules: Partial<ETLRuleSet> = {}
+    const rulesRaw = form.get('rules') as string | null
+    if (rulesRaw) {
+      try { partialRules = JSON.parse(rulesRaw) } catch { /* usar defaults */ }
+    }
+    const rules = resolveRuleSet(partialRules)
+
     if (!file) {
       return NextResponse.json({ error: 'No se recibio ningun archivo' }, { status: 400 })
     }
 
-    // Solo se aceptan archivos .txt
-    if (!file.name.toLowerCase().endsWith('.txt')) {
+    // Se aceptan .txt, .csv y .tsv
+    const nombre = file.name.toLowerCase()
+    if (!nombre.endsWith('.txt') && !nombre.endsWith('.csv') && !nombre.endsWith('.tsv')) {
       return NextResponse.json(
-        { error: 'Solo se aceptan archivos .txt para famosos' },
+        { error: 'Solo se aceptan archivos .txt, .csv o .tsv para famosos' },
         { status: 400 },
       )
     }
@@ -75,7 +103,8 @@ export async function POST(req: NextRequest) {
         cumpleanos: resultado.cumpleanosCount,
         famosos: {
           create: resultado.famosos.map((f) => ({
-            nombre: f.nombre,
+            // Aplicar reglas ETL al nombre antes de guardar
+            nombre: aplicarReglas(f.nombre, rules),
             fechaOriginal: f.fechaOriginal,
             fechaNormalizada: f.fechaNormalizada,
             fechaAprox: f.fechaAprox,

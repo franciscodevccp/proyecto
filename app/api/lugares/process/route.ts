@@ -11,11 +11,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
 import { procesarLugares } from '../../../lib/lugares-parser'
+import { resolveRuleSet, type ETLRuleSet } from '../../../lib/etl-rules'
+
+/**
+ * Aplica las reglas ETL configuradas al texto del nombre del lugar.
+ */
+function aplicarReglas(texto: string, rules: ETLRuleSet): string {
+  let s = texto
+  if (rules['trim']) s = s.trim()
+  if (rules['collapseSpaces']) s = s.replace(/\s+/g, ' ').trim()
+  if (rules['removeAccents']) {
+    s = s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+  }
+  if (rules['titleCase']) {
+    s = s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+  return s
+}
 
 /**
  * POST /api/lugares/process
  * FormData esperado:
- *   - file:    archivo CSV separado por ";" (puede ser .txt o .csv)
+ *   - file:    archivo CSV separado por ";" (.txt, .csv o .tsv)
+ *   - rules:   JSON con ETLRuleSet parcial (opcional)
  *   - dryRun: "true" para previsualizar sin guardar (opcional)
  */
 export async function POST(req: NextRequest) {
@@ -24,15 +42,23 @@ export async function POST(req: NextRequest) {
     const file = form.get('file') as File | null
     const dryRun = form.get('dryRun') === 'true'
 
+    // Parsear reglas ETL opcionales enviadas como JSON
+    let partialRules: Partial<ETLRuleSet> = {}
+    const rulesRaw = form.get('rules') as string | null
+    if (rulesRaw) {
+      try { partialRules = JSON.parse(rulesRaw) } catch { /* usar defaults */ }
+    }
+    const rules = resolveRuleSet(partialRules)
+
     if (!file) {
       return NextResponse.json({ error: 'No se recibio ningun archivo' }, { status: 400 })
     }
 
-    // Validar extension
+    // Se aceptan .txt, .csv y .tsv
     const nombre = file.name.toLowerCase()
-    if (!nombre.endsWith('.txt') && !nombre.endsWith('.csv')) {
+    if (!nombre.endsWith('.txt') && !nombre.endsWith('.csv') && !nombre.endsWith('.tsv')) {
       return NextResponse.json(
-        { error: 'Solo se aceptan archivos .txt o .csv para lugares' },
+        { error: 'Solo se aceptan archivos .txt, .csv o .tsv para lugares' },
         { status: 400 },
       )
     }
@@ -77,7 +103,8 @@ export async function POST(req: NextRequest) {
         duplicates: resultado.duplicateCount,
         lugares: {
           create: resultado.lugares.map((l) => ({
-            nombre: l.nombre,
+            // Aplicar reglas ETL al nombre antes de guardar
+            nombre: aplicarReglas(l.nombre, rules),
             // Georeferencia: solo si tiene coordenadas validas
             georef: l.georef
               ? {
