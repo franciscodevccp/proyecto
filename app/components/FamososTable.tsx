@@ -178,7 +178,7 @@ export default function FamososTable({ batchId }: FamososTableProps) {
               <th className="px-4 py-3 text-left">Fecha original</th>
               <th className="px-4 py-3 text-left">Fecha normalizada</th>
               <th className="px-4 py-3 text-left w-16">Edad</th>
-              <th className="px-4 py-3 text-left w-12">🎂</th>
+              <th className="px-4 py-3 text-center w-12"><Cake className="w-3.5 h-3.5 inline text-pink-400" /></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -216,7 +216,11 @@ export default function FamososTable({ batchId }: FamososTableProps) {
                     {f.edad != null ? f.edad : '—'}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {f.esCumpleanos && <span title="Cumpleaños hoy">🎂</span>}
+                    {f.esCumpleanos && (
+                      <span title="Cumpleaños hoy" className="flex justify-center">
+                        <Cake className="w-4 h-4 text-pink-500" />
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))

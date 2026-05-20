@@ -2,38 +2,30 @@
 
 /**
  * famosos/page.tsx
- * Página del módulo de famosos.
- * Permite cargar el archivo .txt, procesarlo y visualizar resultados con
- * estadísticas, tabla paginada y exportación en múltiples formatos.
+ * Página del módulo de famosos con estructura idéntica al dashboard principal.
+ * Incluye drag & drop, tarjetas de estadísticas, tabs Datos / Log / Historial.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useCallback } from 'react'
+import { useDropzone } from 'react-dropzone'
 import { Toaster, toast } from 'react-hot-toast'
-import { Users, Database, Moon, Sun, Upload, X, ArrowLeft } from 'lucide-react'
+import {
+  Users, Database, Moon, Sun, Upload, X, Loader2,
+  FileText, Table, ScrollText, History, BookOpen, ArrowLeft,
+} from 'lucide-react'
 import Link from 'next/link'
 import FamososStats from '../components/FamososStats'
 import FamososTable from '../components/FamososTable'
+import FamososBatchHistory, { type FamososResponse } from '../components/FamososBatchHistory'
 import { useDarkMode } from '../hooks/useDarkMode'
 
-/** Respuesta del endpoint POST /api/famosos/process */
-interface ResultadoFamosos {
-  batchId: string
-  fileName: string
-  totalInput: number
-  totalOutput: number
-  duplicateCount: number
-  cumpleanosCount: number
-  logs: string[]
-}
+type Tab = 'datos' | 'log' | 'historial'
 
 export default function PaginaFamosos() {
   const [isDark, toggleDark] = useDarkMode()
-  const [resultado, setResultado] = useState<ResultadoFamosos | null>(null)
+  const [resultado, setResultado] = useState<FamososResponse | null>(null)
   const [cargando, setCargando] = useState(false)
-  const [mostrarLogs, setMostrarLogs] = useState(false)
-
-  // Drag & drop state
-  const [arrastrandoSobre, setArrastrandoSobre] = useState(false)
+  const [tab, setTab] = useState<Tab>('datos')
 
   /**
    * Procesa el archivo .txt con el endpoint de famosos.
@@ -43,21 +35,18 @@ export default function PaginaFamosos() {
       toast.error('Solo se aceptan archivos .txt')
       return
     }
-
     setCargando(true)
     try {
       const form = new FormData()
       form.append('file', archivo)
-
       const res = await fetch('/api/famosos/process', { method: 'POST', body: form })
       const data = await res.json()
-
       if (!res.ok) {
         toast.error(data.error ?? 'Error al procesar el archivo')
         return
       }
-
       setResultado(data)
+      setTab('datos')
       toast.success(`${data.totalOutput} famosos procesados`)
     } catch {
       toast.error('Error de red al procesar el archivo')
@@ -66,26 +55,28 @@ export default function PaginaFamosos() {
     }
   }
 
-  /** Maneja selección de archivo via input */
-  function onArchivoSeleccionado(e: React.ChangeEvent<HTMLInputElement>) {
-    const archivo = e.target.files?.[0]
-    if (archivo) procesarArchivo(archivo)
-    e.target.value = ''
-  }
+  /** Callback de react-dropzone */
+  const onDrop = useCallback((accepted: File[]) => {
+    if (accepted[0]) procesarArchivo(accepted[0])
+  }, [])
 
-  /** Maneja drop de archivo */
-  function onDrop(e: React.DragEvent<HTMLDivElement>) {
-    e.preventDefault()
-    setArrastrandoSobre(false)
-    const archivo = e.dataTransfer.files[0]
-    if (archivo) procesarArchivo(archivo)
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'text/plain': ['.txt'] },
+    maxFiles: 1,
+    disabled: cargando,
+  })
+
+  /** Limpia el dashboard si el batch eliminado es el activo */
+  function handleBatchDelete(id: string) {
+    if (resultado?.batchId === id) setResultado(null)
   }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
       <Toaster position="top-right" />
 
-      {/* Header */}
+      {/* Header — misma estructura que comunas */}
       <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -99,7 +90,7 @@ export default function PaginaFamosos() {
             <Users className="w-7 h-7 text-purple-600" />
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Famosos</h1>
-              <p className="text-xs text-gray-400">Procesamiento y normalización de fechas</p>
+              <p className="text-xs text-gray-400">Normalización de fechas y deduplicación</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -109,10 +100,17 @@ export default function PaginaFamosos() {
             >
               Lugares turísticos
             </Link>
+            <Link
+              href="/api-docs"
+              className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              <BookOpen className="w-4 h-4" />
+              API Docs
+            </Link>
             <button
               onClick={toggleDark}
               className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              title={isDark ? 'Modo claro' : 'Modo oscuro'}
+              title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             >
               {isDark
                 ? <Sun className="w-4 h-4 text-yellow-400" />
@@ -125,7 +123,7 @@ export default function PaginaFamosos() {
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-4 sm:space-y-6">
 
-        {/* Zona de carga */}
+        {/* Sección de carga — misma estructura que comunas */}
         <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 sm:p-6 space-y-3">
           <div>
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
@@ -133,45 +131,46 @@ export default function PaginaFamosos() {
             </h2>
             <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
               Formato esperado:{' '}
-              <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">
-                N. Nombre Completo - Fecha
-              </code>
-              — un famoso por línea
+              <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">N. Nombre Completo - Fecha</code>
+              {' '}— un famoso por línea
             </p>
           </div>
 
-          {/* Área de drag & drop */}
+          {/* Zona de drop — misma que FileUpload.tsx */}
           <div
-            onDragOver={(e) => { e.preventDefault(); setArrastrandoSobre(true) }}
-            onDragLeave={() => setArrastrandoSobre(false)}
-            onDrop={onDrop}
-            className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-colors
-              ${arrastrandoSobre
-                ? 'border-purple-400 bg-purple-50 dark:bg-purple-950/30'
-                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
+            {...getRootProps()}
+            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
+              ${isDragActive
+                ? 'border-purple-500 bg-purple-50 dark:bg-purple-950'
+                : 'border-gray-300 dark:border-gray-600 hover:border-purple-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }
+              ${cargando ? 'opacity-60 cursor-not-allowed' : ''}`}
           >
-            <Upload className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-              Arrastra el archivo aquí o haz clic para seleccionarlo
-            </p>
-            <label className="cursor-pointer">
-              <span className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                ${cargando
-                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                  : 'bg-purple-600 hover:bg-purple-700 text-white'
-                }`}
-              >
-                {cargando ? 'Procesando…' : 'Seleccionar archivo .txt'}
-              </span>
-              <input
-                type="file"
-                accept=".txt"
-                onChange={onArchivoSeleccionado}
-                disabled={cargando}
-                className="hidden"
-              />
-            </label>
+            <input {...getInputProps()} />
+            <div className="flex flex-col items-center gap-3">
+              {cargando
+                ? <Loader2 className="w-10 h-10 text-purple-500 animate-spin" />
+                : <Upload className="w-10 h-10 text-gray-400 dark:text-gray-500" />
+              }
+              <div>
+                {cargando ? (
+                  <p className="text-purple-600 dark:text-purple-400 font-medium">Procesando…</p>
+                ) : isDragActive ? (
+                  <p className="text-purple-600 dark:text-purple-400 font-medium">Suelta el archivo aquí</p>
+                ) : (
+                  <>
+                    <p className="font-medium text-gray-700 dark:text-gray-300">
+                      Arrastra tu archivo aquí
+                    </p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                      Acepta{' '}
+                      <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">.txt</code>
+                      {' '}— o haz clic para seleccionar
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </section>
 
@@ -200,45 +199,54 @@ export default function PaginaFamosos() {
               cumpleanosCount={resultado.cumpleanosCount}
             />
 
-            {/* Tabla de famosos */}
+            {/* Tabs: Datos / Log / Historial */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-              <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100 dark:border-gray-800">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                  Famosos procesados
-                </h3>
-                <button
-                  onClick={() => setMostrarLogs((s) => !s)}
-                  className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                >
-                  {mostrarLogs ? 'Ocultar log ▲' : 'Ver log ▼'}
-                </button>
+              <div className="flex border-b border-gray-200 dark:border-gray-800">
+                {(
+                  [
+                    { id: 'datos', label: 'Datos procesados', icon: Table },
+                    { id: 'log', label: 'Log de proceso', icon: ScrollText },
+                    { id: 'historial', label: 'Historial', icon: History },
+                  ] as const
+                ).map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setTab(id)}
+                    className={`flex items-center gap-1.5 px-3 sm:px-5 py-3 sm:py-4 text-xs sm:text-sm font-medium transition-colors
+                      ${tab === id
+                        ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50/50 dark:bg-purple-950/30'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                      }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                ))}
               </div>
 
-              {/* Log detallado (colapsable) */}
-              {mostrarLogs && (
-                <div className="px-4 sm:px-6 py-4 border-b border-gray-100 dark:border-gray-800">
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
-                    {resultado.logs.map((linea, i) => (
-                      <div key={i} className={linea.includes('DUPLICADO') ? 'text-orange-500' : linea.includes('CUMPLEAÑOS') ? 'text-pink-500' : ''}>
-                        {linea}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div className="p-3 sm:p-6">
-                <FamososTable batchId={resultado.batchId} />
+                {tab === 'datos' && <FamososTable batchId={resultado.batchId} />}
+
+                {tab === 'log' && (
+                  <LogFamosos logs={resultado.logs} />
+                )}
+
+                {tab === 'historial' && (
+                  <FamososBatchHistory
+                    onLoad={(data) => { setResultado(data); setTab('datos') }}
+                    onDelete={handleBatchDelete}
+                  />
+                )}
               </div>
             </div>
           </>
         )}
 
-        {/* Estado inicial */}
+        {/* Estado inicial sin resultados */}
         {!resultado && (
           <div className="text-center py-16 text-gray-400 dark:text-gray-600">
-            <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Carga un archivo para ver los famosos procesados</p>
+            <Database className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-sm">Carga un archivo para ver los resultados</p>
           </div>
         )}
       </main>
@@ -250,6 +258,53 @@ export default function PaginaFamosos() {
           <span>v0.1.0</span>
         </div>
       </footer>
+    </div>
+  )
+}
+
+/** Visor de log interno — lista las entradas con color según tipo */
+function LogFamosos({ logs }: { logs: string[] }) {
+  if (logs.length === 0) {
+    return (
+      <div className="text-center py-10 text-gray-400 dark:text-gray-500">
+        <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+        <p className="text-sm">Carga un archivo para ver el log detallado</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="max-h-[500px] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+        {logs.map((linea, i) => {
+          const esDuplicado = linea.includes('DUPLICADO')
+          const esCumple = linea.includes('CUMPLEAÑOS')
+          const esError = linea.includes('no parseado')
+          return (
+            <div key={i} className="px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-start gap-3">
+              <span className="text-xs text-gray-400 dark:text-gray-500 w-8 shrink-0 pt-0.5 font-mono">
+                {String(i + 1).padStart(3, '0')}
+              </span>
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                  esDuplicado
+                    ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300'
+                    : esCumple
+                    ? 'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300'
+                    : esError
+                    ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+                    : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+                }`}
+              >
+                {esDuplicado ? 'Duplicado' : esCumple ? 'Cumpleaños' : esError ? 'Error' : 'OK'}
+              </span>
+              <p className="text-xs text-gray-600 dark:text-gray-400 font-mono leading-relaxed">
+                {linea}
+              </p>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
