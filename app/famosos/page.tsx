@@ -6,7 +6,7 @@
  * Incluye drag & drop, tarjetas de estadísticas, tabs Datos / Log / Historial.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Toaster, toast } from 'react-hot-toast'
 import {
@@ -31,6 +31,34 @@ export default function PaginaFamosos() {
   const [cargando, setCargando] = useState(false)
   const [tab, setTab] = useState<Tab>('datos')
   const [rules, setRules] = useState<ETLRuleSet>(DEFAULT_RULESET)
+
+  /**
+   * Si la URL trae ?batch=ID (viene desde analytics/historial),
+   * carga ese batch automáticamente sin necesidad de subir archivo.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const batchId = params.get('batch')
+    if (!batchId) return
+
+    fetch(`/api/famosos/batch?id=${batchId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const b = d.batch
+        if (!b) return
+        setResultado({
+          batchId: b.id,
+          fileName: b.fileName,
+          totalInput: b.totalInput,
+          totalOutput: b.totalOutput,
+          duplicateCount: b.duplicates,
+          cumpleanosCount: b.cumpleanos,
+          logs: [],
+        })
+        setTab('datos')
+      })
+      .catch(() => {/* silencioso */})
+  }, [])
 
   /**
    * Procesa el archivo .txt con el endpoint de famosos.

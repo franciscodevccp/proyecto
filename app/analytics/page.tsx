@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
-  AreaChart, Area, BarChart, Bar,
+  AreaChart, Area, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
@@ -58,11 +58,11 @@ const DELETE_URL: Record<Modulo, string> = {
   lugares: '/api/lugares/batch',
 }
 
-/** Ruta "Ver" según el módulo */
+/** Ruta "Ver" según el módulo — pasa el batchId como query param */
 const VER_URL: Record<Modulo, (id: string) => string> = {
   comunas: (id) => `/?batch=${id}`,
-  famosos: () => '/famosos',
-  lugares: () => '/lugares',
+  famosos: (id) => `/famosos?batch=${id}`,
+  lugares: (id) => `/lugares?batch=${id}`,
 }
 
 /** Estilos del badge de módulo */
@@ -348,7 +348,7 @@ export default function AnalyticsPage() {
                           />
                           <Bar dataKey="duplicates" name="Duplicados" radius={[0, 4, 4, 0]}>
                             {topDuplicates.map((entry, i) => (
-                              <rect key={i} fill={entry.fill} />
+                              <Cell key={i} fill={entry.fill} />
                             ))}
                           </Bar>
                         </BarChart>
