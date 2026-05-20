@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useDropzone } from 'react-dropzone'
 import { Toaster, toast } from 'react-hot-toast'
 import {
@@ -20,6 +21,22 @@ import LugaresBatchHistory, { type LugaresResponse } from '../components/Lugares
 import RulesConfig from '../components/RulesConfig'
 import { useDarkMode } from '../hooks/useDarkMode'
 import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
+
+/**
+ * Importacion dinamica del mapa Leaflet con SSR desactivado.
+ * Leaflet usa window/document internamente y no puede ejecutarse en el servidor.
+ */
+const LugaresMap = dynamic(() => import('../components/LugaresMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 h-32 flex items-center justify-center">
+      <div className="flex items-center gap-2 text-gray-400">
+        <Loader2 className="w-5 h-5 animate-spin" />
+        <span className="text-sm">Cargando mapa…</span>
+      </div>
+    </div>
+  ),
+})
 
 type Tab = 'datos' | 'log' | 'historial'
 
@@ -214,6 +231,9 @@ export default function PaginaLugares() {
               totalOutput={resultado.totalOutput}
               duplicateCount={resultado.duplicateCount}
             />
+
+            {/* Mapa interactivo de georeferencias */}
+            <LugaresMap batchId={resultado.batchId} />
 
             {/* Tabs: Datos / Log / Historial */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">

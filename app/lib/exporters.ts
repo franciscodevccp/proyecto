@@ -444,39 +444,64 @@ export function generateLugaresSQL(
   lines.push(`DROP TABLE IF EXISTS ${q('lugares')};`)
   lines.push('')
 
-  // Alias para tipo serial segun dialecto
-  const serialPK = dialect === 'mysql' ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'SERIAL PRIMARY KEY'
-  const tableEnd  = dialect === 'mysql' ? ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;' : ');'
-
   // ── CREATE TABLE lugares ─────────────────────
+  // La tabla padre no tiene FK, el alias simple alcanza para ambos dialectos
+  const serialPK = dialect === 'mysql' ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'SERIAL PRIMARY KEY'
+  const engineSuffix = dialect === 'mysql' ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4' : ''
+
   lines.push(`-- Tabla principal`)
   lines.push(`CREATE TABLE ${q('lugares')} (`)
   lines.push(`  id     ${serialPK},`)
   lines.push(`  nombre VARCHAR(255) NOT NULL`)
-  lines.push(tableEnd)
+  lines.push(`)${engineSuffix};`)
   lines.push('')
 
   // ── CREATE TABLE georeferencias ──────────────
+  // PostgreSQL: FK inline en columna.
+  // MySQL: FK inline se parsea pero se ignora — usar CONSTRAINT tabla-nivel.
   lines.push(`-- Coordenadas geograficas (solo para lugares con georef)`)
-  lines.push(`CREATE TABLE ${q('georeferencias')} (`)
-  lines.push(`  id       ${serialPK},`)
-  lines.push(`  lugar_id INT NOT NULL REFERENCES ${q('lugares')}(id) ON DELETE CASCADE,`)
-  lines.push(`  latitud  DECIMAL(10,7) NOT NULL,`)
-  lines.push(`  longitud DECIMAL(10,7) NOT NULL`)
-  lines.push(tableEnd)
+  if (dialect === 'postgresql') {
+    lines.push(`CREATE TABLE ${q('georeferencias')} (`)
+    lines.push(`  id       SERIAL PRIMARY KEY,`)
+    lines.push(`  lugar_id INT NOT NULL REFERENCES ${q('lugares')}(id) ON DELETE CASCADE,`)
+    lines.push(`  latitud  DECIMAL(10,7) NOT NULL,`)
+    lines.push(`  longitud DECIMAL(10,7) NOT NULL`)
+    lines.push(`);`)
+  } else {
+    lines.push(`CREATE TABLE ${q('georeferencias')} (`)
+    lines.push(`  id       INT AUTO_INCREMENT PRIMARY KEY,`)
+    lines.push(`  lugar_id INT NOT NULL,`)
+    lines.push(`  latitud  DECIMAL(10,7) NOT NULL,`)
+    lines.push(`  longitud DECIMAL(10,7) NOT NULL,`)
+    lines.push(`  CONSTRAINT fk_georef_lugar FOREIGN KEY (lugar_id) REFERENCES ${q('lugares')}(id) ON DELETE CASCADE`)
+    lines.push(`) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`)
+  }
   lines.push('')
 
   // ── CREATE TABLE direcciones ─────────────────
   lines.push(`-- Direccion postal estructurada de cada lugar`)
-  lines.push(`CREATE TABLE ${q('direcciones')} (`)
-  lines.push(`  id                      ${serialPK},`)
-  lines.push(`  lugar_id                INT NOT NULL REFERENCES ${q('lugares')}(id) ON DELETE CASCADE,`)
-  lines.push(`  nombre_calle            VARCHAR(255),`)
-  lines.push(`  numero_calle            VARCHAR(50),`)
-  lines.push(`  ciudad_estado_provincia VARCHAR(255),`)
-  lines.push(`  pais                    VARCHAR(100),`)
-  lines.push(`  raw_direccion           TEXT NOT NULL`)
-  lines.push(tableEnd)
+  if (dialect === 'postgresql') {
+    lines.push(`CREATE TABLE ${q('direcciones')} (`)
+    lines.push(`  id                      SERIAL PRIMARY KEY,`)
+    lines.push(`  lugar_id                INT NOT NULL REFERENCES ${q('lugares')}(id) ON DELETE CASCADE,`)
+    lines.push(`  nombre_calle            VARCHAR(255),`)
+    lines.push(`  numero_calle            VARCHAR(50),`)
+    lines.push(`  ciudad_estado_provincia VARCHAR(255),`)
+    lines.push(`  pais                    VARCHAR(100),`)
+    lines.push(`  raw_direccion           TEXT NOT NULL`)
+    lines.push(`);`)
+  } else {
+    lines.push(`CREATE TABLE ${q('direcciones')} (`)
+    lines.push(`  id                      INT AUTO_INCREMENT PRIMARY KEY,`)
+    lines.push(`  lugar_id                INT NOT NULL,`)
+    lines.push(`  nombre_calle            VARCHAR(255),`)
+    lines.push(`  numero_calle            VARCHAR(50),`)
+    lines.push(`  ciudad_estado_provincia VARCHAR(255),`)
+    lines.push(`  pais                    VARCHAR(100),`)
+    lines.push(`  raw_direccion           TEXT NOT NULL,`)
+    lines.push(`  CONSTRAINT fk_dir_lugar FOREIGN KEY (lugar_id) REFERENCES ${q('lugares')}(id) ON DELETE CASCADE`)
+    lines.push(`) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`)
+  }
   lines.push('')
 
   // ── INSERT INTO lugares ──────────────────────
