@@ -63,17 +63,38 @@ export default function FamososBatchHistory({ onLoad, onDelete }: FamososBatchHi
 
   useEffect(() => { cargarHistorial() }, [])
 
-  /** Carga un batch pasado en el dashboard */
-  function handleLoad(batch: FamosoBatchSummary) {
-    onLoad({
-      batchId: batch.id,
-      fileName: batch.fileName,
-      totalInput: batch.totalInput,
-      totalOutput: batch.totalOutput,
-      duplicateCount: batch.duplicates,
-      cumpleanosCount: batch.cumpleanos,
-      logs: [],
-    })
+  /**
+   * Carga un batch pasado en el dashboard.
+   * Obtiene los famosos completos para calcular cumpleanosCount de forma dinámica
+   * (el valor almacenado en la BD es del día del procesamiento y puede estar desfasado).
+   */
+  async function handleLoad(batch: FamosoBatchSummary) {
+    try {
+      const res = await fetch(`/api/famosos/batch?id=${batch.id}`)
+      const data = await res.json()
+      const famosos: { esCumpleanos: boolean }[] = data.batch?.famosos ?? []
+      const cumpleanosCount = famosos.filter((f) => f.esCumpleanos).length
+      onLoad({
+        batchId: batch.id,
+        fileName: batch.fileName,
+        totalInput: batch.totalInput,
+        totalOutput: batch.totalOutput,
+        duplicateCount: batch.duplicates,
+        cumpleanosCount,
+        logs: [],
+      })
+    } catch {
+      // Si falla la petición, usar el valor guardado como fallback
+      onLoad({
+        batchId: batch.id,
+        fileName: batch.fileName,
+        totalInput: batch.totalInput,
+        totalOutput: batch.totalOutput,
+        duplicateCount: batch.duplicates,
+        cumpleanosCount: batch.cumpleanos,
+        logs: [],
+      })
+    }
   }
 
   /** Elimina un batch con confirmación de dos pasos */

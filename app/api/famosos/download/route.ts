@@ -13,6 +13,21 @@ import { generateFamososSQL } from '../../../lib/exporters'
 import type { SQLDialect } from '../../../lib/exporters'
 
 /**
+ * Recalcula si un famoso cumple años HOY a partir de fechaNormalizada (DD-MM-YYYY).
+ * El valor almacenado en la BD es del día del procesamiento y puede quedar desfasado.
+ */
+function cumpleHoy(fechaNormalizada: string | null): boolean {
+  if (!fechaNormalizada) return false
+  const partes = fechaNormalizada.split('-')
+  if (partes.length !== 3) return false
+  const dia = parseInt(partes[0], 10)
+  const mes = parseInt(partes[1], 10)
+  if (isNaN(dia) || isNaN(mes) || mes < 1 || mes > 12 || dia < 1 || dia > 31) return false
+  const hoy = new Date()
+  return mes === hoy.getMonth() + 1 && dia === hoy.getDate()
+}
+
+/**
  * GET /api/famosos/download?batchId=XXX&type=csv|json|txt|sql&sorted=true
  *   &dialect=postgresql|mysql|sqlite   (solo para type=sql)
  *   &tableName=famosos_norm            (solo para type=sql)
@@ -38,10 +53,17 @@ export async function GET(req: NextRequest) {
     }
 
     // Obtener famosos del batch, ordenados por fecha de creacion
-    const famosos = await prisma.famoso.findMany({
+    const famososRaw = await prisma.famoso.findMany({
       where: { batchId },
       orderBy: { createdAt: 'asc' },
     })
+
+    // Recalcular esCumpleanos en tiempo de exportación para que el archivo
+    // refleje el estado de HOY, no el del día en que se procesó el batch.
+    const famosos = famososRaw.map((f) => ({
+      ...f,
+      esCumpleanos: cumpleHoy(f.fechaNormalizada),
+    }))
 
     // Ordenar alfabeticamente si se solicita
     if (sorted) {

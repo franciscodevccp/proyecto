@@ -155,7 +155,7 @@ export function procesarFamosos(content: string): FamososResult {
 
     // Registrar resultado del parseo de fecha
     if (cumpleanos) {
-      logs.push(`Línea ${lineNumber}: CUMPLEANOS HOY — "${nombre}"`)
+      logs.push(`Línea ${lineNumber}: CUMPLEAÑOS HOY — "${nombre}"`)
     }
     if (parsed.normalizada) {
       logs.push(`Línea ${lineNumber}: "${fechaOriginal}" -> "${parsed.normalizada}"`)
