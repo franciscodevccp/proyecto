@@ -17,23 +17,6 @@ import {
   Sun, Moon, ChevronDown, Loader2, ArrowLeft,
 } from 'lucide-react'
 
-// ─── Tipos para html2pdf.js (sin tipos oficiales en DefinitelyTyped) ──────────
-
-interface Html2PdfOptions {
-  margin?: number | number[]
-  filename?: string
-  image?: { type: string; quality: number }
-  html2canvas?: { scale?: number; useCORS?: boolean; logging?: boolean }
-  jsPDF?: { unit?: string; format?: string; orientation?: string }
-}
-
-interface Html2PdfInstance {
-  set(opts: Html2PdfOptions): Html2PdfInstance
-  from(el: HTMLElement): Html2PdfInstance
-  save(): Promise<void>
-}
-
-type Html2PdfFn = () => Html2PdfInstance
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -466,23 +449,51 @@ export default function ReportePage() {
   const [cargando, setCargando]   = useState(false)
   const [descargando, setDescargando] = useState(false)
 
-  /** Genera y descarga el reporte como PDF usando html2pdf.js */
+  /** Genera y descarga el reporte como PDF usando html2canvas + jsPDF */
   async function descargarPDF() {
     const elemento = document.getElementById('reporte-documento')
     if (!elemento || !reporte) return
     setDescargando(true)
     try {
-      const { default: html2pdfFn } = await import('html2pdf.js') as { default: Html2PdfFn }
-      await html2pdfFn()
-        .set({
-          margin: [12, 12, 12, 12],
-          filename: `reporte-${reporte.modulo}-${reporte.fileName}.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, logging: false },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        })
-        .from(elemento)
-        .save()
+      // Importaciones dinámicas para evitar SSR
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ])
+
+      // Captura el elemento como imagen en alta resolución
+      const canvas = await html2canvas(elemento, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      })
+
+      const imgData  = canvas.toDataURL('image/jpeg', 0.95)
+      const pdf      = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      const pageW    = pdf.internal.pageSize.getWidth()
+      const pageH    = pdf.internal.pageSize.getHeight()
+      const imgW     = pageW
+      const imgH     = (canvas.height * imgW) / canvas.width
+
+      // Paginación automática si el contenido supera una hoja
+      let heightLeft = imgH
+      let position   = 0
+
+      pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
+      heightLeft -= pageH
+
+      while (heightLeft > 0) {
+        position -= pageH
+        pdf.addPage()
+        pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
+        heightLeft -= pageH
+      }
+
+      const nombreArchivo = `reporte-${reporte.modulo}-${reporte.fileName.replace(/\s+/g, '_')}.pdf`
+      pdf.save(nombreArchivo)
+    } catch (err) {
+      console.error('Error generando PDF:', err)
     } finally {
       setDescargando(false)
     }
