@@ -9,7 +9,7 @@
  * (cuando se llega desde analytics o el historial de cada módulo).
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Toaster, toast } from 'react-hot-toast'
 import { useDarkMode } from '../hooks/useDarkMode'
@@ -443,12 +443,25 @@ function ReporteLugaresView({ r }: { r: ReporteLugares }) {
 
 export default function ReportePage() {
   const [isDark, toggleDark] = useDarkMode()
-  const [batches, setBatches]     = useState<BatchItem[]>([])
-  const [modulo, setModulo]       = useState<Modulo>('famosos')
-  const [batchId, setBatchId]     = useState<string>('')
-  const [reporte, setReporte]     = useState<ReporteData | null>(null)
-  const [cargando, setCargando]   = useState(false)
+  const [batches, setBatches]         = useState<BatchItem[]>([])
+  const [modulo, setModulo]           = useState<Modulo>('famosos')
+  const [batchId, setBatchId]         = useState<string>('')
+  const [reporte, setReporte]         = useState<ReporteData | null>(null)
+  const [cargando, setCargando]       = useState(false)
   const [descargando, setDescargando] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Cierra el dropdown al hacer clic fuera
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [])
 
   /**
    * Genera el PDF directamente con jsPDF (texto nativo, sin html2canvas).
@@ -817,7 +830,7 @@ export default function ReportePage() {
               return (
                 <button
                   key={m}
-                  onClick={() => { setModulo(m); setBatchId(''); setReporte(null) }}
+                  onClick={() => { setModulo(m); setBatchId(''); setReporte(null); setDropdownOpen(false) }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
                     ${modulo === m
                       ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900'
@@ -831,27 +844,80 @@ export default function ReportePage() {
             })}
           </div>
 
-          {/* Selector de batch */}
+          {/* Selector de batch — dropdown personalizado */}
           <div className="flex gap-2">
-            <div className="relative flex-1">
-              <select
-                value={batchId}
-                onChange={(e) => setBatchId(e.target.value)}
-                className="w-full appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-700 dark:text-gray-300 pr-8 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <div ref={dropdownRef} className="relative flex-1">
+
+              {/* Trigger */}
+              <button
+                onClick={() => setDropdownOpen((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm text-left transition-colors hover:border-gray-300 dark:hover:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               >
-                <option value="">— Selecciona un batch —</option>
-                {batchesFiltrados.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.fileName} · {new Date(b.createdAt).toLocaleDateString('es-CL')}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                {batchId ? (() => {
+                  const b = batchesFiltrados.find((x) => x.id === batchId)
+                  return b ? (
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium text-gray-800 dark:text-gray-100 truncate">
+                        {b.fileName.replace(/\.[^.]+$/, '')}
+                      </span>
+                      <span className="text-xs text-gray-400 shrink-0">
+                        {new Date(b.createdAt).toLocaleDateString('es-CL')}
+                      </span>
+                    </span>
+                  ) : null
+                })() : (
+                  <span className="text-gray-400 dark:text-gray-500">— Selecciona un batch —</span>
+                )}
+                <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Panel desplegable */}
+              {dropdownOpen && (
+                <div className="absolute top-full mt-1.5 left-0 right-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
+                  {/* Opción vacía */}
+                  <button
+                    onClick={() => { setBatchId(''); setDropdownOpen(false) }}
+                    className="w-full px-4 py-2.5 text-sm text-left text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors border-b border-gray-100 dark:border-gray-700"
+                  >
+                    — Selecciona un batch —
+                  </button>
+
+                  {/* Lista de batches */}
+                  <div className="max-h-60 overflow-y-auto">
+                    {batchesFiltrados.length === 0 ? (
+                      <p className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">
+                        Sin batches para este módulo
+                      </p>
+                    ) : batchesFiltrados.map((b) => {
+                      const activo = b.id === batchId
+                      return (
+                        <button
+                          key={b.id}
+                          onClick={() => { setBatchId(b.id); setDropdownOpen(false) }}
+                          className={`w-full px-4 py-2.5 text-sm text-left flex items-center justify-between gap-3 transition-colors
+                            ${activo
+                              ? 'bg-blue-50 dark:bg-blue-950/50'
+                              : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                            }`}
+                        >
+                          <span className={`font-medium truncate ${activo ? 'text-blue-700 dark:text-blue-300' : 'text-gray-800 dark:text-gray-200'}`}>
+                            {b.fileName.replace(/\.[^.]+$/, '')}
+                          </span>
+                          <span className="text-xs text-gray-400 shrink-0">
+                            {new Date(b.createdAt).toLocaleDateString('es-CL')}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
+
             <button
               onClick={() => cargarReporte(batchId, modulo)}
               disabled={!batchId || cargando}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium rounded-xl transition-colors whitespace-nowrap"
             >
               {cargando ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Generar'}
             </button>
