@@ -19,7 +19,7 @@ import {
   Users, MapPin,
 } from 'lucide-react'
 import { useDarkMode } from '../hooks/useDarkMode'
-import { Sun, Moon } from 'lucide-react'
+import { Sun, Moon, ArrowLeft } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -178,6 +178,13 @@ export default function AnalyticsPage() {
       <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Volver al inicio"
+            >
+              <ArrowLeft className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            </Link>
             <Link href="/" className="flex items-center gap-2">
               <Database className="w-6 h-6 text-blue-600" />
               <span className="font-bold text-gray-900 dark:text-gray-100">COMUNAS_NORM</span>
