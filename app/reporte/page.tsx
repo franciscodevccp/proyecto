@@ -450,54 +450,239 @@ export default function ReportePage() {
   const [cargando, setCargando]   = useState(false)
   const [descargando, setDescargando] = useState(false)
 
-  /** Genera y descarga el reporte como PDF usando html2canvas + jsPDF v2 */
+  /**
+   * Genera el PDF directamente con jsPDF (texto nativo, sin html2canvas).
+   * Evita completamente los problemas de colores lab()/oklch() del browser.
+   */
   async function descargarPDF() {
-    const elemento = document.getElementById('reporte-documento')
-    if (!elemento || !reporte) return
+    if (!reporte) return
     setDescargando(true)
     try {
-      // Importaciones dinámicas para evitar SSR
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import('html2canvas'),
-        import('jspdf'),
-      ])
+      const { jsPDF } = await import('jspdf')
+      const pdf   = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      const PW    = pdf.internal.pageSize.getWidth()
+      const PH    = pdf.internal.pageSize.getHeight()
+      const MX    = 20   // margen horizontal
+      const ANCHO = PW - MX * 2
+      let y       = MX
 
-      // Captura el elemento como imagen en alta resolución con fondo blanco
-      const canvas = await html2canvas(elemento, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      })
+      // ── Helpers ───────────────────────────────────────────────────────────
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.92)
-      const pdf     = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
-      const pageW   = pdf.internal.pageSize.getWidth()
-      const pageH   = pdf.internal.pageSize.getHeight()
-      const imgW    = pageW
-      const imgH    = (canvas.height * imgW) / canvas.width
+      /** Avanza a nueva página si el contenido no cabe */
+      const checkPage = (alto = 8) => {
+        if (y + alto > PH - MX) { pdf.addPage(); y = MX }
+      }
 
-      // Paginación automática si el contenido supera una hoja A4
-      let heightLeft = imgH
-      let position   = 0
+      /** Escribe texto con wrap y avanza y */
+      const txt = (texto: string, sz: number, negrita: boolean, r: number, g: number, b: number) => {
+        pdf.setFontSize(sz)
+        pdf.setFont('helvetica', negrita ? 'bold' : 'normal')
+        pdf.setTextColor(r, g, b)
+        const lines = pdf.splitTextToSize(texto, ANCHO) as string[]
+        checkPage(lines.length * sz * 0.42 + 2)
+        pdf.text(lines, MX, y)
+        y += lines.length * sz * 0.42 + 2
+      }
 
-      pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
-      heightLeft -= pageH
+      /** Separador de sección */
+      const seccion = (label: string) => {
+        y += 3
+        checkPage(10)
+        pdf.setDrawColor(220, 220, 220)
+        pdf.setLineWidth(0.3)
+        pdf.line(MX, y, MX + ANCHO, y)
+        y += 4
+        pdf.setFontSize(8)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(150, 150, 150)
+        pdf.text(label.toUpperCase(), MX, y)
+        y += 5
+      }
 
-      while (heightLeft > 0) {
-        position  -= pageH
-        pdf.addPage()
-        pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
-        heightLeft -= pageH
+      /** Fila clave — valor */
+      const stat = (etiqueta: string, valor: string) => {
+        checkPage(7)
+        pdf.setFontSize(10)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(80, 80, 80)
+        pdf.text(etiqueta, MX, y)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(30, 30, 30)
+        pdf.text(valor, MX + ANCHO, y, { align: 'right' })
+        y += 6
+      }
+
+      // ── Encabezado del documento ──────────────────────────────────────────
+      const headerColor: Record<Modulo, [number, number, number]> = {
+        famosos: [245, 243, 255],
+        comunas: [239, 246, 255],
+        lugares: [240, 253, 250],
+      }
+      const [hr, hg, hb] = headerColor[reporte.modulo]
+      pdf.setFillColor(hr, hg, hb)
+      pdf.rect(0, 0, PW, 42, 'F')
+
+      pdf.setFontSize(8)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setTextColor(150, 150, 150)
+      pdf.text('REPORTE DE ANÁLISIS EJECUTIVO', MX, y + 4)
+      y += 8
+
+      pdf.setFontSize(18)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(17, 24, 39)
+      pdf.text(reporte.fileName, MX, y)
+      y += 8
+
+      pdf.setFontSize(9)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setTextColor(107, 114, 128)
+      pdf.text(`${MODULO_LABEL[reporte.modulo]}  ·  Generado el ${fmtDate(new Date().toISOString())}`, MX, y)
+      y += 12
+
+      // ── Contenido por módulo ──────────────────────────────────────────────
+
+      if (reporte.modulo === 'famosos') {
+        const r = reporte as ReporteFamosos
+        const pctNorm = r.totalOutput > 0 ? Math.round((r.conNormalizada / r.totalOutput) * 100) : 0
+
+        seccion('Resumen ejecutivo')
+        txt(
+          `Se detectaron ${r.totalInput} registros con ${plural(r.formatos.length, 'formato de fecha distinto', 'formatos de fecha distintos')}. ` +
+          `Tras la normalización quedaron ${r.totalOutput} famosos únicos` +
+          (r.duplicates > 0 ? ` (${r.duplicates} duplicados eliminados)` : '') + '.',
+          10, false, 55, 65, 81,
+        )
+        if (r.masAntiguo && r.masReciente) {
+          txt(
+            `El más antiguo: ${r.masAntiguo.nombre} (${r.masAntiguo.display}). ` +
+            `El más reciente: ${r.masReciente.nombre} (${r.masReciente.display}).`,
+            10, false, 55, 65, 81,
+          )
+        }
+        if (r.cumpleHoy.length > 0) {
+          txt(`Hoy cumple años: ${r.cumpleHoy.join(', ')}.`, 10, false, 55, 65, 81)
+        } else if (r.proximoCumple) {
+          txt(
+            `Próximo cumpleaños: ${r.proximoCumple.nombre} el ${r.proximoCumple.diaMes} ` +
+            `(en ${plural(r.proximoCumple.diasFaltan, 'día', 'días')}).`,
+            10, false, 55, 65, 81,
+          )
+        }
+
+        seccion('Estadísticas de procesamiento')
+        stat('Registros de entrada',       String(r.totalInput))
+        stat('Famosos únicos (salida)',     String(r.totalOutput))
+        stat('Duplicados eliminados',       `${r.duplicates} (${r.pctDups}%)`)
+        stat('Fechas normalizadas',         `${r.conNormalizada} (${pctNorm}%)`)
+        if (r.conAprox > 0) stat('Fechas históricas (a.C.)', String(r.conAprox))
+        if (r.sinFecha > 0) stat('Sin fecha parseada',       String(r.sinFecha))
+
+        if (r.masAntiguo || r.masReciente) {
+          seccion('Rango temporal')
+          if (r.masAntiguo) stat('Más antiguo', `${r.masAntiguo.nombre}  ·  ${r.masAntiguo.display}`)
+          if (r.masReciente) stat('Más reciente', `${r.masReciente.nombre}  ·  ${r.masReciente.display}`)
+        }
+
+        seccion(`Formatos de fecha detectados (${r.formatos.length})`)
+        r.formatos.forEach((f) => stat(f.nombre, `${f.count} ${f.count === 1 ? 'registro' : 'registros'}`))
+
+        seccion('Cumpleaños')
+        stat('Cumple hoy', r.cumpleHoy.length > 0 ? r.cumpleHoy.join(', ') : 'Nadie')
+        if (r.proximoCumple) {
+          stat('Próximo cumpleaños', `${r.proximoCumple.nombre}  ·  ${r.proximoCumple.diaMes}`)
+          stat('Días restantes',     String(r.proximoCumple.diasFaltan))
+        }
+      }
+
+      if (reporte.modulo === 'comunas') {
+        const r = reporte as ReporteComunas
+
+        seccion('Resumen ejecutivo')
+        txt(
+          `Se procesaron ${r.totalInput} registros. Tras eliminar ${r.duplicates} duplicados (${r.pctDups}%) quedaron ${r.totalOutput} comunas únicas.`,
+          10, false, 55, 65, 81,
+        )
+        txt(
+          `De esas, ${r.changes} fueron normalizadas (${r.pctNorm}%) y ${r.sinCambio} ya estaban en formato correcto.`,
+          10, false, 55, 65, 81,
+        )
+        if (r.qualityBefore !== null && r.qualityAfter !== null) {
+          txt(`Score de calidad: ${r.qualityBefore}/100 → ${r.qualityAfter}/100.`, 10, false, 55, 65, 81)
+        }
+
+        seccion('Estadísticas de procesamiento')
+        stat('Registros de entrada',  String(r.totalInput))
+        stat('Comunas únicas',        String(r.totalOutput))
+        stat('Duplicados eliminados', `${r.duplicates} (${r.pctDups}%)`)
+        stat('Normalizadas',          `${r.changes} (${r.pctNorm}%)`)
+        stat('Sin cambio',            String(r.sinCambio))
+        if (r.qualityBefore !== null) stat('Calidad antes',   `${r.qualityBefore}/100`)
+        if (r.qualityAfter  !== null) stat('Calidad después', `${r.qualityAfter}/100`)
+
+        if (r.cambios.length > 0) {
+          seccion('Tipos de cambio aplicados')
+          r.cambios.forEach((c) => stat(c.tipo, `${c.count} veces`))
+        }
+      }
+
+      if (reporte.modulo === 'lugares') {
+        const r = reporte as ReporteLugares
+
+        seccion('Resumen ejecutivo')
+        txt(
+          `Se procesaron ${r.totalInput} registros. Tras eliminar ${r.duplicates} duplicados (${r.pctDups}%) quedaron ${r.totalOutput} lugares únicos.`,
+          10, false, 55, 65, 81,
+        )
+        txt(
+          `${r.conGeoref} tienen georeferencia válida (${r.pctGeoref}%)` +
+          (r.sinGeoref > 0 ? `, ${r.sinGeoref} sin georeferencia` : '') + '.',
+          10, false, 55, 65, 81,
+        )
+        if (r.totalPaises > 0) {
+          txt(
+            `Abarca ${plural(r.totalPaises, 'país', 'países')}` +
+            (r.paises[0] ? `. El más frecuente: ${r.paises[0].pais} (${r.paises[0].count} lugares)` : '') + '.',
+            10, false, 55, 65, 81,
+          )
+        }
+
+        seccion('Estadísticas de procesamiento')
+        stat('Registros de entrada',       String(r.totalInput))
+        stat('Lugares únicos',             String(r.totalOutput))
+        stat('Duplicados eliminados',      `${r.duplicates} (${r.pctDups}%)`)
+        stat('Con georeferencia',          `${r.conGeoref} (${r.pctGeoref}%)`)
+        stat('Sin georeferencia',          String(r.sinGeoref))
+        stat('Con dirección estructurada', String(r.conDireccion))
+        stat('Países representados',       String(r.totalPaises))
+
+        if (r.paises.length > 0) {
+          seccion('Distribución por país')
+          r.paises.forEach((p) => stat(p.pais, `${p.count} ${p.count === 1 ? 'lugar' : 'lugares'}`))
+        }
+        if (r.ciudades.length > 0) {
+          seccion('Ciudades principales')
+          r.ciudades.forEach((c) => stat(c.ciudad, `${c.count} ${c.count === 1 ? 'lugar' : 'lugares'}`))
+        }
+      }
+
+      // ── Pie de página en todas las hojas ─────────────────────────────────
+      const total = pdf.getNumberOfPages()
+      for (let p = 1; p <= total; p++) {
+        pdf.setPage(p)
+        pdf.setFontSize(8)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(180, 180, 180)
+        pdf.text(`COMUNAS_NORM  ·  Módulo ${MODULO_LABEL[reporte.modulo]}  ·  v0.1.0`, MX, PH - 8)
+        pdf.text(`Página ${p} de ${total}`, PW - MX, PH - 8, { align: 'right' })
       }
 
       const nombre = `reporte-${reporte.modulo}-${reporte.fileName.replace(/\s+/g, '_')}.pdf`
       pdf.save(nombre)
-      toast.success('PDF descargado')
+      toast.success('PDF descargado correctamente')
     } catch (err) {
       console.error('Error generando PDF:', err)
-      toast.error('Error al generar el PDF: ' + (err instanceof Error ? err.message : String(err)))
+      toast.error('Error: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setDescargando(false)
     }
