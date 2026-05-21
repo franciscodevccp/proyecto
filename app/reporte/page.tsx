@@ -774,13 +774,20 @@ export default function ReportePage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
       <Toaster position="top-right" />
 
-      {/* Estilos de impresión */}
+      {/* Estilos globales: impresión + scrollbar personalizado */}
       <style>{`
         @media print {
           .no-print { display: none !important; }
           body { background: white !important; }
           .print-card { box-shadow: none !important; border: 1px solid #e5e7eb !important; }
         }
+        .batch-scroll::-webkit-scrollbar { width: 4px; }
+        .batch-scroll::-webkit-scrollbar-track { background: transparent; }
+        .batch-scroll::-webkit-scrollbar-thumb {
+          background: #4b5563;
+          border-radius: 9999px;
+        }
+        .batch-scroll::-webkit-scrollbar-thumb:hover { background: #6b7280; }
       `}</style>
 
       {/* Header */}
@@ -883,7 +890,7 @@ export default function ReportePage() {
                   </button>
 
                   {/* Lista de batches */}
-                  <div className="max-h-60 overflow-y-auto">
+                  <div className="batch-scroll max-h-60 overflow-y-auto">
                     {batchesFiltrados.length === 0 ? (
                       <p className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 text-center">
                         Sin batches para este módulo
