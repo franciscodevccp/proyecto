@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../lib/prisma'
+import { esCumpleanosHoy, diasHastaProximoCumpleanos } from '../../lib/date-parser'
 
 // ─── Detector de formato de fecha ─────────────────────────────────────────────
 
@@ -30,24 +31,12 @@ function detectarFormato(fecha: string): string {
   return 'Formato libre'
 }
 
-// ─── Helpers de cumpleaños ────────────────────────────────────────────────────
+// ─── Nombres de mes en español (para la etiqueta del próximo cumpleaños) ──────
 
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ]
-
-/** Días hasta la próxima ocurrencia del día/mes dado */
-function diasHasta(mes: number, dia: number): number {
-  const hoy = new Date()
-  hoy.setHours(0, 0, 0, 0)
-  let proximo = new Date(hoy.getFullYear(), mes - 1, dia)
-  proximo.setHours(0, 0, 0, 0)
-  if (proximo.getTime() <= hoy.getTime()) {
-    proximo = new Date(hoy.getFullYear() + 1, mes - 1, dia)
-  }
-  return Math.round((proximo.getTime() - hoy.getTime()) / 86_400_000)
-}
 
 // ─── Módulo Famosos ───────────────────────────────────────────────────────────
 
@@ -109,18 +98,11 @@ async function reporteFamosos(batchId: string): Promise<NextResponse> {
   const masReciente = ordenados[ordenados.length - 1] ?? null
 
   // ── Cumpleaños ────────────────────────────────────────────────────────────
-  const hoy    = new Date()
-  const mesHoy = hoy.getMonth() + 1
-  const diaHoy = hoy.getDate()
-
-  const cumpleHoy: string[] = []
-  for (const f of famosos) {
-    if (!f.fechaNormalizada) continue
-    const p = f.fechaNormalizada.split('-')
-    if (parseInt(p[1], 10) === mesHoy && parseInt(p[0], 10) === diaHoy) {
-      cumpleHoy.push(f.nombre)
-    }
-  }
+  // esCumpleanosHoy y diasHastaProximoCumpleanos viven en date-parser para
+  // evitar duplicación con la misma lógica usada en el módulo de famosos.
+  const cumpleHoy = famosos
+    .filter((f) => esCumpleanosHoy(f.fechaNormalizada))
+    .map((f) => f.nombre)
 
   let proximoCumple: { nombre: string; diaMes: string; diasFaltan: number } | null = null
   if (cumpleHoy.length === 0) {
@@ -130,7 +112,7 @@ async function reporteFamosos(batchId: string): Promise<NextResponse> {
       const p   = f.fechaNormalizada.split('-')
       const dia = parseInt(p[0], 10)
       const mes = parseInt(p[1], 10)
-      const d   = diasHasta(mes, dia)
+      const d   = diasHastaProximoCumpleanos(mes, dia)
       if (d < minDias) {
         minDias = d
         proximoCumple = {

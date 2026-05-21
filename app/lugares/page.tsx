@@ -78,8 +78,11 @@ export default function PaginaLugares() {
   /**
    * Procesa el archivo con el endpoint de lugares.
    * El servidor lo lee con latin1 para manejar Windows-1252.
+   * Envuelto en useCallback con `rules` como dependencia para evitar stale closure:
+   * si el usuario cambia las reglas ETL antes de soltar el archivo, la función
+   * captura siempre la versión más reciente de `rules`.
    */
-  async function procesarArchivo(archivo: File) {
+  const procesarArchivo = useCallback(async (archivo: File) => {
     const nombre = archivo.name.toLowerCase()
     if (!nombre.endsWith('.txt') && !nombre.endsWith('.csv') && !nombre.endsWith('.tsv')) {
       toast.error('Solo se aceptan archivos .txt, .csv o .tsv')
@@ -104,12 +107,12 @@ export default function PaginaLugares() {
     } finally {
       setCargando(false)
     }
-  }
+  }, [rules])
 
-  /** Callback de react-dropzone */
+  /** Callback de react-dropzone — depende de procesarArchivo para no capturar un closure viejo */
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) procesarArchivo(accepted[0])
-  }, [])
+  }, [procesarArchivo])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,

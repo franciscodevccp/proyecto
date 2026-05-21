@@ -6,7 +6,7 @@
  * filtros por tipo de cambio y modal de exportacion en 4 formatos.
  */
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Download, Search, X, FileText, FileJson, Sheet, Database, ArrowUpDown, Check } from 'lucide-react'
 import SqlExport from './SqlExport'
 

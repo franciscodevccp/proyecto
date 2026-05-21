@@ -63,8 +63,11 @@ export default function PaginaFamosos() {
 
   /**
    * Procesa el archivo .txt con el endpoint de famosos.
+   * Envuelto en useCallback con `rules` como dependencia para evitar stale closure:
+   * si el usuario cambia las reglas ETL antes de soltar el archivo, la función
+   * captura siempre la versión más reciente de `rules`.
    */
-  async function procesarArchivo(archivo: File) {
+  const procesarArchivo = useCallback(async (archivo: File) => {
     const ext = archivo.name.toLowerCase()
     if (!ext.endsWith('.txt') && !ext.endsWith('.csv') && !ext.endsWith('.tsv')) {
       toast.error('Solo se aceptan archivos .txt, .csv o .tsv')
@@ -89,12 +92,12 @@ export default function PaginaFamosos() {
     } finally {
       setCargando(false)
     }
-  }
+  }, [rules])
 
-  /** Callback de react-dropzone */
+  /** Callback de react-dropzone — depende de procesarArchivo para no capturar un closure viejo */
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) procesarArchivo(accepted[0])
-  }, [])
+  }, [procesarArchivo])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
