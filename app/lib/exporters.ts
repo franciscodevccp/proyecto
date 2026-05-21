@@ -10,6 +10,28 @@
 import * as XLSX from 'xlsx'
 
 // ─────────────────────────────────────────────
+// VALIDACIÓN DE SEGURIDAD
+// ─────────────────────────────────────────────
+
+/** Regex que acepta solo nombres de tabla válidos en SQL (sin caracteres peligrosos) */
+const SAFE_TABLE_NAME = /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/
+
+/**
+ * Valida que un nombre de tabla sea seguro para insertar en SQL.
+ * Lanza error si contiene caracteres que podrían usarse en inyección SQL.
+ * Se llama al inicio de cada función generadora de SQL.
+ * @param name - Nombre de tabla a validar
+ * @throws Error si el nombre no es válido
+ */
+function assertSafeTableName(name: string): void {
+  if (!SAFE_TABLE_NAME.test(name)) {
+    throw new Error(
+      `Nombre de tabla inválido: "${name}". Solo se permiten letras, números y guiones bajos.`,
+    )
+  }
+}
+
+// ─────────────────────────────────────────────
 // TIPOS
 // ─────────────────────────────────────────────
 
@@ -72,6 +94,8 @@ export function generateSQL(
   options: SQLExportOptions,
 ): string {
   const { tableName, dialect, includeOriginal, includeIndex } = options
+  // Validar tableName antes de usarlo en cualquier string SQL
+  assertSafeTableName(tableName)
   const now = new Date().toISOString()
   const varchar = varcharType(dialect)
   const lines: string[] = []
@@ -295,6 +319,8 @@ export function generateFamososSQL(
   options?: FamososSQLOptions,
 ): string {
   const tableName = options?.tableName?.trim() || 'famosos_norm'
+  // Validar tableName antes de usarlo en cualquier string SQL
+  assertSafeTableName(tableName)
   const dialect: SQLDialect = options?.dialect ?? 'postgresql'
   const q = (n: string) => quoteIdent(n, dialect)
   const now = new Date().toISOString()
@@ -423,6 +449,10 @@ export function generateLugaresSQL(
   options?: LugaresSQLOptions,
 ): string {
   const dialect: 'postgresql' | 'mysql' = options?.dialect ?? 'postgresql'
+  // Validar los nombres de las 3 tablas fijas que se generan
+  assertSafeTableName('lugares')
+  assertSafeTableName('georeferencias')
+  assertSafeTableName('direcciones')
   const q = (n: string) => quoteIdent(n, dialect)
   const now = new Date().toISOString()
   const lines: string[] = []

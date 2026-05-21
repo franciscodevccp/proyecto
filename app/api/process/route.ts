@@ -38,6 +38,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No se recibio ningun archivo' }, { status: 400 })
     }
 
+    /** Tamaño máximo permitido por archivo: 10 MB */
+    const MAX_FILE_SIZE = 10 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `Archivo demasiado grande. Máximo permitido: 10 MB (recibido: ${(file.size / 1024 / 1024).toFixed(1)} MB)` },
+        { status: 413 },
+      )
+    }
+
     // Validar extension permitida
     const validExtensions = ['.txt', '.csv', '.tsv']
     const hasValidExt = validExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))

@@ -54,14 +54,18 @@ export default function BatchHistory({ onLoad, onDelete }: BatchHistoryProps) {
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  // Indica si hay más de 20 batches en la BD (sin cargarlos todos)
+  const [hayMas, setHayMas] = useState(false)
 
-  /** Carga el historial de batches desde el API */
+  /** Carga el historial de batches desde el API (pide 21 para detectar si hay más) */
   async function fetchBatches() {
     setLoading(true)
     try {
-      const res = await fetch('/api/batches')
+      const res = await fetch('/api/batches?limit=21')
       const data = await res.json()
-      setBatches(data.batches ?? [])
+      const todos: BatchSummary[] = data.batches ?? []
+      setHayMas(todos.length > 20)
+      setBatches(todos.slice(0, 20))
     } finally {
       setLoading(false)
     }
@@ -200,6 +204,16 @@ export default function BatchHistory({ onLoad, onDelete }: BatchHistoryProps) {
           ))}
         </div>
       </div>
+
+      {/* Aviso cuando hay más de 20 batches */}
+      {hayMas && (
+        <p className="text-xs text-center text-gray-400 dark:text-gray-500 py-2">
+          Mostrando los 20 más recientes.{' '}
+          <a href="/analytics" className="text-blue-600 dark:text-blue-400 hover:underline">
+            Ver todos en Analytics →
+          </a>
+        </p>
+      )}
     </div>
   )
 }

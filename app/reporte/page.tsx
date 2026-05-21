@@ -9,7 +9,7 @@
  * (cuando se llega desde analytics o el historial de cada módulo).
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Toaster, toast } from 'react-hot-toast'
 import { useDarkMode } from '../hooks/useDarkMode'
@@ -737,20 +737,12 @@ export default function ReportePage() {
       .then((d) => setBatches(d.batches ?? []))
   }, [])
 
-  // Lee params de la URL para carga directa (desde analytics)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const bid = params.get('batch')
-    const mod = params.get('modulo') as Modulo | null
-    if (bid && mod && ['famosos', 'comunas', 'lugares'].includes(mod)) {
-      setModulo(mod)
-      setBatchId(bid)
-      cargarReporte(bid, mod)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  async function cargarReporte(bid: string, mod: Modulo) {
+  /**
+   * Carga el reporte de un batch específico.
+   * Envuelto en useCallback para poder incluirlo como dependencia del efecto
+   * de carga por URL sin causar re-ejecuciones infinitas.
+   */
+  const cargarReporte = useCallback(async (bid: string, mod: Modulo) => {
     if (!bid) return
     setCargando(true)
     setReporte(null)
@@ -761,7 +753,19 @@ export default function ReportePage() {
     } finally {
       setCargando(false)
     }
-  }
+  }, []) // Sin dependencias: solo usa setters de estado estables
+
+  // Lee params de la URL para carga directa (desde analytics o historial)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const bid = params.get('batch')
+    const mod = params.get('modulo') as Modulo | null
+    if (bid && mod && ['famosos', 'comunas', 'lugares'].includes(mod)) {
+      setModulo(mod)
+      setBatchId(bid)
+      cargarReporte(bid, mod)
+    }
+  }, [cargarReporte]) // Sin eslint-disable: cargarReporte es estable (useCallback sin deps)
 
   const batchesFiltrados = [...batches]
     .filter((b) => b.modulo === modulo)

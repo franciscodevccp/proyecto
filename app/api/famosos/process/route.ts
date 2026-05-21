@@ -1,4 +1,4 @@
-/**
+﻿/**
  * api/famosos/process/route.ts
  * Endpoint POST que recibe un archivo de famosos,
  * lo procesa con procesarFamosos() y persiste el resultado en PostgreSQL.
@@ -12,24 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
 import { procesarFamosos } from '../../../lib/famosos-parser'
 import { resolveRuleSet, type ETLRuleSet } from '../../../lib/etl-rules'
-
-/**
- * Aplica las reglas ETL configuradas al texto del nombre.
- * Equivalente a lo que hace el pipeline de comunas sobre cada valor.
- */
-function aplicarReglas(texto: string, rules: ETLRuleSet): string {
-  let s = texto
-  if (rules['trim']) s = s.trim()
-  if (rules['collapseSpaces']) s = s.replace(/\s+/g, ' ').trim()
-  if (rules['removeAccents']) {
-    // Usar escape Unicode explícito para evitar problemas de encoding en el fuente
-    s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  }
-  if (rules['titleCase']) {
-    s = s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
-  }
-  return s
-}
+import { normalizeText } from '../../../lib/normalizer'
 
 /**
  * POST /api/famosos/process
@@ -54,6 +37,15 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: 'No se recibio ningun archivo' }, { status: 400 })
+    }
+
+    /** Tamaño máximo permitido por archivo: 10 MB */
+    const MAX_FILE_SIZE = 10 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `Archivo demasiado grande. Máximo permitido: 10 MB (recibido: ${(file.size / 1024 / 1024).toFixed(1)} MB)` },
+        { status: 413 },
+      )
     }
 
     // Se aceptan .txt, .csv y .tsv
@@ -106,7 +98,7 @@ export async function POST(req: NextRequest) {
         famosos: {
           create: resultado.famosos.map((f) => ({
             // Aplicar reglas ETL al nombre antes de guardar
-            nombre: aplicarReglas(f.nombre, rules),
+            nombre: normalizeText(f.nombre, rules),
             fechaOriginal: f.fechaOriginal,
             fechaNormalizada: f.fechaNormalizada,
             fechaAprox: f.fechaAprox,

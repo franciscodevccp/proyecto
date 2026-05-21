@@ -36,12 +36,14 @@ export interface ProcessResult {
 /**
  * Aplica las reglas de normalizacion habilitadas a un texto.
  * Solo se ejecutan las transformaciones cuya regla este activa en el ruleset.
+ * Exportada para que los endpoints de famosos y lugares puedan reutilizarla
+ * sin duplicar la lógica (eliminando sus funciones `aplicarReglas` locales).
  *
  * @param text - Texto crudo a normalizar
  * @param rules - Conjunto de reglas activas
  * @returns Texto normalizado segun las reglas
  */
-function normalizeText(text: string, rules: ETLRuleSet): string {
+export function normalizeText(text: string, rules: ETLRuleSet): string {
   let result = text
 
   // Regla: eliminar espacios al inicio y al final

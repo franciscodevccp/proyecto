@@ -49,13 +49,18 @@ export default function FamososBatchHistory({ onLoad, onDelete }: FamososBatchHi
   const [cargando, setCargando] = useState(true)
   const [eliminandoId, setEliminandoId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  // Indica si hay más de 20 batches en la BD (sin cargarlos todos)
+  const [hayMas, setHayMas] = useState(false)
 
+  /** Carga el historial (pide 21 para detectar si hay más de 20) */
   async function cargarHistorial() {
     setCargando(true)
     try {
-      const res = await fetch('/api/famosos/batch')
+      const res = await fetch('/api/famosos/batch?limit=21')
       const data = await res.json()
-      setBatches(data.batches ?? [])
+      const todos: FamosoBatchSummary[] = data.batches ?? []
+      setHayMas(todos.length > 20)
+      setBatches(todos.slice(0, 20))
     } finally {
       setCargando(false)
     }
@@ -206,6 +211,16 @@ export default function FamososBatchHistory({ onLoad, onDelete }: FamososBatchHi
           ))}
         </div>
       </div>
+
+      {/* Aviso cuando hay más de 20 batches */}
+      {hayMas && (
+        <p className="text-xs text-center text-gray-400 dark:text-gray-500 py-2">
+          Mostrando los 20 más recientes.{' '}
+          <a href="/analytics" className="text-purple-600 dark:text-purple-400 hover:underline">
+            Ver todos en Analytics →
+          </a>
+        </p>
+      )}
     </div>
   )
 }

@@ -8,22 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
-
-/**
- * Calcula si un famoso cumple años HOY a partir de su fecha normalizada (DD-MM-YYYY).
- * Se evalúa en tiempo de consulta para que el valor sea siempre correcto
- * independientemente de cuándo se procesó el batch original.
- */
-function cumpleHoy(fechaNormalizada: string | null): boolean {
-  if (!fechaNormalizada) return false
-  const partes = fechaNormalizada.split('-')
-  if (partes.length !== 3) return false
-  const dia = parseInt(partes[0], 10)
-  const mes = parseInt(partes[1], 10)
-  if (isNaN(dia) || isNaN(mes) || mes < 1 || mes > 12 || dia < 1 || dia > 31) return false
-  const hoy = new Date()
-  return mes === hoy.getMonth() + 1 && dia === hoy.getDate()
-}
+import { esCumpleanosHoy } from '../../../lib/date-parser'
 
 /**
  * GET /api/famosos/batch
@@ -52,7 +37,7 @@ export async function GET(req: NextRequest) {
       // preciso, sin depender del valor almacenado al procesar el batch.
       const famososActualizados = batch.famosos.map((f) => ({
         ...f,
-        esCumpleanos: cumpleHoy(f.fechaNormalizada),
+        esCumpleanos: esCumpleanosHoy(f.fechaNormalizada),
       }))
 
       return NextResponse.json({ batch: { ...batch, famosos: famososActualizados } })

@@ -112,15 +112,23 @@ export function fixEncoding(text: string): string {
 
 /**
  * Parsea una cadena "lat, lon" en números de punto flotante.
- * Retorna null si el formato no es reconocible.
+ * Retorna null si el formato no es reconocible o las coordenadas están fuera de rango.
+ * Rechaza (0, 0) porque casi siempre indica un dato ausente, no el Golfo de Guinea.
  */
 export function parsearGeoref(raw: string): GeorefParsed | null {
   const match = raw.trim().match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/)
   if (!match) return null
-  return {
-    latitud: parseFloat(match[1]),
-    longitud: parseFloat(match[2]),
-  }
+
+  const latitud  = parseFloat(match[1])
+  const longitud = parseFloat(match[2])
+
+  // Validar rangos geográficos válidos
+  if (latitud < -90 || latitud > 90) return null
+  if (longitud < -180 || longitud > 180) return null
+  // (0, 0) indica dato ausente o error — Golfo de Guinea, casi nunca válido
+  if (latitud === 0 && longitud === 0) return null
+
+  return { latitud, longitud }
 }
 
 /**

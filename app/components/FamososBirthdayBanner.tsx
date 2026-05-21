@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react'
 import { Cake, CalendarDays } from 'lucide-react'
+import { esCumpleanosHoy, diasHastaProximoCumpleanos } from '../lib/date-parser'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -52,25 +53,6 @@ function parseMesDia(fecha: string): { mes: number; dia: number } | null {
   return { dia, mes }
 }
 
-/** Devuelve true si el mes y día coinciden con hoy */
-function esHoy(mes: number, dia: number): boolean {
-  const hoy = new Date()
-  return mes === hoy.getMonth() + 1 && dia === hoy.getDate()
-}
-
-/** Cuántos días faltan hasta el próximo cumpleaños (este año o el siguiente) */
-function diasHasta(mes: number, dia: number): number {
-  const hoy = new Date()
-  hoy.setHours(0, 0, 0, 0)
-  const anio = hoy.getFullYear()
-  let proximo = new Date(anio, mes - 1, dia)
-  proximo.setHours(0, 0, 0, 0)
-  if (proximo.getTime() <= hoy.getTime()) {
-    proximo = new Date(anio + 1, mes - 1, dia)
-  }
-  return Math.round((proximo.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24))
-}
-
 /** Formatea día y mes en español */
 function formatDiaMes(mes: number, dia: number): string {
   const meses = [
@@ -97,8 +79,7 @@ export default function FamososBirthdayBanner({ batchId }: FamososBirthdayBanner
         const hoy: FamosoRaw[] = []
         for (const f of famosos) {
           if (!f.fechaNormalizada) continue
-          const md = parseMesDia(f.fechaNormalizada)
-          if (md && esHoy(md.mes, md.dia)) hoy.push(f)
+          if (esCumpleanosHoy(f.fechaNormalizada)) hoy.push(f)
         }
         if (hoy.length > 0) {
           setCumpleHoy(hoy)
@@ -113,7 +94,7 @@ export default function FamososBirthdayBanner({ batchId }: FamososBirthdayBanner
           if (!f.fechaNormalizada) continue
           const md = parseMesDia(f.fechaNormalizada)
           if (!md) continue
-          const dias = diasHasta(md.mes, md.dia)
+          const dias = diasHastaProximoCumpleanos(md.mes, md.dia)
           if (dias < minDias) {
             minDias = dias
             candidato = { famoso: f, dias, mes: md.mes, dia: md.dia }

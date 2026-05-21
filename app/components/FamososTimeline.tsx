@@ -67,6 +67,15 @@ const FOTO_H = 120
 /** Tamaño del lote para las peticiones a Wikipedia */
 const WIKI_LOTE = 8
 
+/**
+ * Cantidad máxima de items mostrados en el timeline.
+ * Con archivos muy grandes el scroll horizontal se vuelve inusable y
+ * las peticiones masivas a Wikipedia degeneran la experiencia.
+ * Se toman los primeros MAX_TIMELINE_ITEMS ordenados cronológicamente
+ * (los más antiguos) para que la línea de tiempo sea siempre coherente.
+ */
+const MAX_TIMELINE_ITEMS = 50
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -141,6 +150,7 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
             anio: extractAnio(f.fechaNormalizada),
           }))
           .sort((a, b) => a.anio - b.anio)
+          .slice(0, MAX_TIMELINE_ITEMS)
 
         setItems(cronologicos)
       })
@@ -202,6 +212,12 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
    */
   const totalW = (CARD_W + GAP) * items.length + GAP
 
+  /**
+   * Indica si el timeline fue recortado al máximo de items permitido.
+   * Se usa en la cabecera para informar al usuario.
+   */
+  const recortado = items.length === MAX_TIMELINE_ITEMS
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
 
@@ -212,6 +228,12 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             Línea de tiempo
           </span>
+          {/* Badge cuando el timeline está recortado al máximo */}
+          {recortado && (
+            <span className="text-xs bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+              primeros {MAX_TIMELINE_ITEMS}
+            </span>
+          )}
         </div>
         <span className="text-xs text-gray-400">
           {items.length} famoso{items.length !== 1 ? 's' : ''} ordenados
@@ -283,7 +305,7 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
 
                   {/* Tarjeta — enlace a Wikipedia en pestaña nueva */}
                   <a
-                    href={`https://es.wikipedia.org/wiki/${encodeURIComponent(item.nombre)}`}
+                    href={`https://en.wikipedia.org/wiki/${encodeURIComponent(item.nombre)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col bg-white dark:bg-gray-800 flex-1 transition-all duration-200 hover:shadow-lg hover:border-purple-300 dark:hover:border-purple-600 hover:-translate-y-1 cursor-pointer"

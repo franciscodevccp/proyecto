@@ -12,6 +12,21 @@ interface ChartsPanelProps {
   data: ProcessResponse
 }
 
+interface BatchTrend {
+  id: string
+  fileName: string
+  qualityBefore: number | null
+  createdAt: string
+}
+
+/**
+ * Caché de nivel módulo para el historial de batches.
+ * Evita refetch en cada cambio de batchId: el historial cambia solo cuando
+ * se procesa un nuevo batch, lo que fuerza un remount del componente.
+ * Se invalida cuando data.batchId no está en la lista (batch nuevo procesado).
+ */
+let historyCache: { batches: BatchTrend[]; ids: Set<string> } | null = null
+
 const PIE_COLORS = {
   Normalizados: '#3b82f6',
   Duplicados:   '#f97316',
@@ -19,19 +34,27 @@ const PIE_COLORS = {
   Corregidos:   '#a855f7',
 }
 
-interface BatchTrend {
-  fileName: string
-  qualityBefore: number | null
-  createdAt: string
-}
-
 export default function ChartsPanel({ data }: ChartsPanelProps) {
-  const [history, setHistory] = useState<BatchTrend[]>([])
+  // Inicializar el estado desde la caché si el batch actual ya está en ella
+  const [history, setHistory] = useState<BatchTrend[]>(
+    () => historyCache?.ids.has(data.batchId) ? historyCache.batches : [],
+  )
 
   useEffect(() => {
+    // Si la caché ya contiene el batch actual, no hacer fetch
+    if (historyCache?.ids.has(data.batchId)) {
+      setHistory(historyCache.batches)
+      return
+    }
+
     fetch('/api/batches')
       .then((r) => r.json())
-      .then((d) => setHistory(d.batches ?? []))
+      .then((d) => {
+        const batches: BatchTrend[] = d.batches ?? []
+        const ids = new Set(batches.map((b) => b.id))
+        historyCache = { batches, ids }
+        setHistory(batches)
+      })
       .catch(() => {})
   }, [data.batchId])
 

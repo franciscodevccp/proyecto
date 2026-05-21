@@ -7,7 +7,7 @@
  * Permite guardar y cargar perfiles de configuracion en localStorage.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, ChevronUp, Save, FolderOpen, Settings } from 'lucide-react'
 import { AVAILABLE_RULES, DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
 
@@ -23,6 +23,12 @@ interface RulesConfigProps {
 export default function RulesConfig({ value, onChange }: RulesConfigProps) {
   const [open, setOpen] = useState(false)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
+
+  // Ref estable para el callback onChange — evita que el efecto de carga
+  // necesite declarar onChange como dependencia (lo que causaría re-ejecuciones
+  // en cada render y la advertencia de react-hooks/exhaustive-deps).
+  const onChangeRef = useRef(onChange)
+  useEffect(() => { onChangeRef.current = onChange }, [onChange])
 
   // Contar cuantas reglas opcionales estan activas
   const activeCount = AVAILABLE_RULES.filter((r) => !r.required && value[r.id]).length
@@ -59,18 +65,17 @@ export default function RulesConfig({ value, onChange }: RulesConfigProps) {
     }
   }
 
-  // Al montar el componente, intentar cargar el perfil guardado automaticamente
+  // Al montar el componente, intentar cargar el perfil guardado automaticamente.
+  // Se usa onChangeRef.current para acceder al callback sin necesidad de declararlo
+  // como dependencia — la ref siempre apunta a la versión más reciente del prop.
   useEffect(() => {
     const raw = localStorage.getItem(LS_KEY)
-    if (raw) {
-      try {
-        const loaded = JSON.parse(raw) as ETLRuleSet
-        onChange({ ...DEFAULT_RULESET, ...loaded })
-      } catch { /* ignorar errores de parse */ }
-    }
-  // Solo ejecutar al montar
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (!raw) return
+    try {
+      const loaded = JSON.parse(raw) as ETLRuleSet
+      onChangeRef.current({ ...DEFAULT_RULESET, ...loaded })
+    } catch { /* perfil guardado inválido — ignorar silenciosamente */ }
+  }, []) // Sin eslint-disable: onChangeRef.current es estable
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">

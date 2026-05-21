@@ -18,6 +18,7 @@ import Link from 'next/link'
 import LugaresStats from '../components/LugaresStats'
 import LugaresTable from '../components/LugaresTable'
 import LugaresBatchHistory, { type LugaresResponse } from '../components/LugaresBatchHistory'
+import ErrorBoundary from '../components/ErrorBoundary'
 import RulesConfig from '../components/RulesConfig'
 import { useDarkMode } from '../hooks/useDarkMode'
 import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
@@ -273,7 +274,9 @@ export default function PaginaLugares() {
             />
 
             {/* Mapa interactivo de georeferencias */}
-            <LugaresMap batchId={resultado.batchId} />
+            <ErrorBoundary label="Mapa de georeferencias">
+              <LugaresMap batchId={resultado.batchId} />
+            </ErrorBoundary>
 
             {/* Tabs: Datos / Log / Historial */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">

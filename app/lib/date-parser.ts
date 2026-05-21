@@ -129,15 +129,24 @@ export function parseDate(raw: string): ParsedDate {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Construye el resultado validando rangos numéricos */
+/**
+ * Construye el resultado de parseo validando rangos numéricos.
+ * Corrige el umbral anterior (>= 1000) que dejaba sin objeto Date
+ * a los años históricos entre 100 y 999 d.C.
+ *
+ * Para años 0-99 no se crea Date porque JS los interpreta como 1900+año,
+ * lo que produciría objetos incorrectos sin posibilidad de corrección segura.
+ */
 function buildResult(d: number, m: number, y: number): ParsedDate {
   if (m < 1 || m > 12 || d < 1 || d > 31) {
     return { normalizada: null, aprox: `fecha inválida: ${d}/${m}/${y}`, date: null }
   }
   const normalizada = `${String(d).padStart(2, '0')}-${String(m).padStart(2, '0')}-${y}`
-  // Para años históricos anteriores a 100, Date() no funciona bien — usarlo solo para >= 1900
-  const date = y >= 1000 ? new Date(y, m - 1, d) : null
-  if (date && y < 100) date.setFullYear(y) // corrección para fechas < 1970 en JS
+
+  // Date() maneja correctamente años >= 100 d.C.
+  // Para y < 100 la API añade 1900 al valor — esas fechas históricas no necesitan Date.
+  const date = y >= 100 ? new Date(y, m - 1, d) : null
+
   return { normalizada, aprox: null, date }
 }
 
@@ -171,9 +180,46 @@ export function calcularEdad(date: Date | null): number | null {
 
 /**
  * Retorna true si hoy coincide exactamente con el día y mes de nacimiento.
+ * Recibe un objeto Date (resultado de parseDate).
  */
 export function esCumpleanos(date: Date | null): boolean {
   if (!date) return false
   const hoy = new Date()
   return hoy.getMonth() === date.getMonth() && hoy.getDate() === date.getDate()
+}
+
+/**
+ * Determina si una fecha normalizada (DD-MM-YYYY) corresponde al día de hoy.
+ * Evalúa solo día y mes, ignora el año (es un cumpleaños, no una fecha exacta).
+ * Versión centralizada que reemplaza `cumpleHoy()` en batch/route y download/route,
+ * y `esHoy()` en FamososBirthdayBanner.
+ * @param fechaNormalizada - Fecha en formato DD-MM-YYYY
+ */
+export function esCumpleanosHoy(fechaNormalizada: string | null): boolean {
+  if (!fechaNormalizada) return false
+  const partes = fechaNormalizada.split('-')
+  if (partes.length !== 3) return false
+  const dia = parseInt(partes[0], 10)
+  const mes = parseInt(partes[1], 10)
+  if (isNaN(dia) || isNaN(mes) || mes < 1 || mes > 12 || dia < 1 || dia > 31) return false
+  const hoy = new Date()
+  return mes === hoy.getMonth() + 1 && dia === hoy.getDate()
+}
+
+/**
+ * Calcula cuántos días faltan para el próximo cumpleaños (día y mes).
+ * Si el cumpleaños ya pasó este año, devuelve los días hasta el año siguiente.
+ * Versión centralizada que reemplaza las funciones `diasHasta()` locales.
+ * @param mes - Número de mes (1-12)
+ * @param dia - Número de día (1-31)
+ */
+export function diasHastaProximoCumpleanos(mes: number, dia: number): number {
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+  let proximo = new Date(hoy.getFullYear(), mes - 1, dia)
+  proximo.setHours(0, 0, 0, 0)
+  if (proximo.getTime() <= hoy.getTime()) {
+    proximo = new Date(hoy.getFullYear() + 1, mes - 1, dia)
+  }
+  return Math.round((proximo.getTime() - hoy.getTime()) / 86_400_000)
 }

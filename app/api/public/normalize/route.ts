@@ -25,8 +25,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { processFile } from '../../../lib/normalizer'
 import { resolveRuleSet } from '../../../lib/etl-rules'
 
-/** Limite de registros por llamada para evitar abusos */
+/** Límite de registros por llamada para evitar abusos */
 const MAX_RECORDS = 10_000
+
+/**
+ * Headers CORS necesarios en todas las respuestas del endpoint público.
+ * El preflight OPTIONS los devuelve, pero el POST también debe incluirlos
+ * o el browser bloqueará la respuesta real tras el preflight exitoso.
+ */
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+} as const
+
+/**
+ * Crea una respuesta JSON con los headers CORS incluidos.
+ * Usar en lugar de NextResponse.json() en todos los returns del handler POST.
+ */
+function corsJson(body: unknown, status = 200): NextResponse {
+  return NextResponse.json(body, { status, headers: CORS_HEADERS })
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,17 +53,11 @@ export async function POST(req: NextRequest) {
 
     // Validar que 'data' sea un array de strings
     if (!Array.isArray(body.data)) {
-      return NextResponse.json(
-        { error: 'El campo "data" debe ser un array de strings' },
-        { status: 400 },
-      )
+      return corsJson({ error: 'El campo "data" debe ser un array de strings' }, 400)
     }
 
     if (body.data.length > MAX_RECORDS) {
-      return NextResponse.json(
-        { error: `Maximo ${MAX_RECORDS} registros por llamada` },
-        { status: 400 },
-      )
+      return corsJson({ error: `Maximo ${MAX_RECORDS} registros por llamada` }, 400)
     }
 
     // Resolver reglas ETL (parciales o todas por defecto)
@@ -66,7 +79,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({
+    return corsJson({
       results,
       stats: {
         total: result.totalInput,
@@ -78,7 +91,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     console.error('[public/normalize]', error)
-    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+    return corsJson({ error: 'Error interno del servidor' }, 500)
   }
 }
 

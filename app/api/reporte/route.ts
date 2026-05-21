@@ -51,6 +51,14 @@ function diasHasta(mes: number, dia: number): number {
 
 // ─── Módulo Famosos ───────────────────────────────────────────────────────────
 
+/** Representa un famoso con su año de nacimiento para ordenación cronológica */
+interface PersonaAnio {
+  nombre: string
+  anio: number
+  display: string
+  esAprox: boolean
+}
+
 async function reporteFamosos(batchId: string): Promise<NextResponse> {
   const batch = await prisma.famosoBatch.findUnique({
     where: { id: batchId },
@@ -76,13 +84,6 @@ async function reporteFamosos(batchId: string): Promise<NextResponse> {
   const sinFecha       = famosos.filter((f) => !f.fechaNormalizada && !f.fechaAprox).length
 
   // ── Rango temporal (más antiguo / más reciente) ───────────────────────────
-  interface PersonaAnio {
-    nombre: string
-    anio: number
-    display: string
-    esAprox: boolean
-  }
-
   const conAnio: PersonaAnio[] = []
 
   for (const f of famosos) {

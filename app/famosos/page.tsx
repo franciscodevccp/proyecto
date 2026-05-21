@@ -19,6 +19,7 @@ import FamososTable from '../components/FamososTable'
 import FamososBatchHistory, { type FamososResponse } from '../components/FamososBatchHistory'
 import FamososBirthdayBanner from '../components/FamososBirthdayBanner'
 import FamososTimeline from '../components/FamososTimeline'
+import ErrorBoundary from '../components/ErrorBoundary'
 import RulesConfig from '../components/RulesConfig'
 import { useDarkMode } from '../hooks/useDarkMode'
 import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
@@ -260,7 +261,9 @@ export default function PaginaFamosos() {
             <FamososBirthdayBanner batchId={resultado.batchId} />
 
             {/* Línea de tiempo cronológica */}
-            <FamososTimeline batchId={resultado.batchId} />
+            <ErrorBoundary label="Línea de tiempo">
+              <FamososTimeline batchId={resultado.batchId} />
+            </ErrorBoundary>
 
             {/* Tabs: Datos / Log / Historial */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * api/lugares/process/route.ts
  * Endpoint POST que recibe un archivo CSV de lugares turísticos,
  * lo procesa con procesarLugares() y persiste el resultado en PostgreSQL.
@@ -13,23 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
 import { procesarLugares, detectarEncoding } from '../../../lib/lugares-parser'
 import { resolveRuleSet, type ETLRuleSet } from '../../../lib/etl-rules'
-
-/**
- * Aplica las reglas ETL configuradas al texto del nombre del lugar.
- */
-function aplicarReglas(texto: string, rules: ETLRuleSet): string {
-  let s = texto
-  if (rules['trim']) s = s.trim()
-  if (rules['collapseSpaces']) s = s.replace(/\s+/g, ' ').trim()
-  if (rules['removeAccents']) {
-    // Usar escape Unicode explícito para evitar problemas de encoding en el fuente
-    s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  }
-  if (rules['titleCase']) {
-    s = s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
-  }
-  return s
-}
+import { normalizeText } from '../../../lib/normalizer'
 
 /**
  * POST /api/lugares/process
@@ -54,6 +38,15 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: 'No se recibio ningun archivo' }, { status: 400 })
+    }
+
+    /** Tamaño máximo permitido por archivo: 10 MB */
+    const MAX_FILE_SIZE = 10 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `Archivo demasiado grande. Máximo permitido: 10 MB (recibido: ${(file.size / 1024 / 1024).toFixed(1)} MB)` },
+        { status: 413 },
+      )
     }
 
     // Se aceptan .txt, .csv y .tsv
@@ -108,7 +101,7 @@ export async function POST(req: NextRequest) {
         lugares: {
           create: resultado.lugares.map((l) => ({
             // Aplicar reglas ETL al nombre antes de guardar
-            nombre: aplicarReglas(l.nombre, rules),
+            nombre: normalizeText(l.nombre, rules),
             // Georeferencia: solo si tiene coordenadas validas
             georef: l.georef
               ? {
