@@ -1,4 +1,4 @@
-/**
+﻿/**
  * lugares-parser.ts
  * Parsea el archivo CSV de lugares turísticos.
  * Genera 3 entidades relacionadas: Lugar, Georeferencia, Direccion.
@@ -95,19 +95,19 @@ export function detectarSeparadorCSV(lineas: string[]): string {
 }
 
 /**
- * Limpia caracteres corruptos generados por la diferencia de encoding
- * entre Windows-1252 y UTF-8. Reemplaza los más comunes del archivo.
+ * Limpia únicamente caracteres que indican corrupción real de encoding:
+ *   - U+FFFD: carácter de reemplazo Unicode (indica byte no decodificable)
+ *   - U+0080–U+009F: caracteres de control C1 de Windows-1252 que no tienen
+ *     representación legible y nunca aparecen en texto válido
+ *
+ * NO se tocan caracteres acentuados (á, é, í, ó, ú, ñ, ü…) porque en la
+ * cadena JS ya son puntos de código Unicode válidos (U+00E1, U+00E9, etc.)
+ * y reemplazarlos destruiría texto correcto.
  */
 export function fixEncoding(text: string): string {
   return text
-    .replace(/�/g, '?')         // Carácter de reemplazo genérico (U+FFFD)
-    .replace(/\xf3/g, 'o')           // ó → o
-    .replace(/\xfc/g, 'u')           // ü → u
-    .replace(/\xdf/g, 'ss')          // ß → ss (Neuschwansteinstrasse)
-    .replace(/\xe9/g, 'e')           // é → e
-    .replace(/\xe1/g, 'a')           // á → a
-    .replace(/\xf1/g, 'n')           // ñ → n
-    .replace(/[\x80-\x9f]/g, '')     // Eliminar caracteres de control de Windows
+    .replace(/�/g, '?')          // Carácter de reemplazo genérico (U+FFFD)
+    .replace(/[\u0080-\u009f]/g, '')  // Caracteres de control C1 de Windows-1252
 }
 
 /**
@@ -125,8 +125,17 @@ export function parsearGeoref(raw: string): GeorefParsed | null {
 
 /**
  * Parsea una dirección libre en sus componentes estructurados.
- * Estrategia: dividir por comas, el último fragmento es el país,
- * el penúltimo es ciudad/estado, el primero puede tener número de calle.
+ *
+ * Heurística para detectar el país:
+ *   - El último fragmento se trata como país SOLO si:
+ *       a) No contiene dígitos (descarta códigos postales como "CA 94043", "75001")
+ *       b) Tiene al menos 3 caracteres (descarta abreviaturas de estado como "CA")
+ *   - Si el último fragmento no pasa ese filtro se deja pais=null y se usa ese
+ *     fragmento como ciudad/estado en su lugar.
+ *
+ * Limitación conocida: si la dirección solo tiene dos partes y la segunda es
+ * el nombre de una ciudad (ej: "Torre Eiffel, París"), "París" se clasifica
+ * como país. Para casos así se recomienda incluir el país explícitamente.
  */
 export function parsearDireccion(raw: string): DireccionParsed {
   const partes = raw.split(',').map(p => p.trim()).filter(p => p.length > 0)
@@ -141,11 +150,28 @@ export function parsearDireccion(raw: string): DireccionParsed {
     return { nombreCalle: partes[0], numeroCalle: null, ciudadEstadoProvincia: null, pais: null, rawDireccion: raw }
   }
 
-  const pais = partes[partes.length - 1]
-  const ciudadEstadoProvincia = partes.length >= 3 ? partes[partes.length - 2] : null
+  // Detectar si el último fragmento parece un nombre de país
+  const ultimo = partes[partes.length - 1]
+  const ultimoEsPais = ultimo.length >= 3 && !/\d/.test(ultimo)
+
+  const pais = ultimoEsPais ? ultimo : null
+
+  // Ciudad/estado: si el último es país, tomar el penúltimo;
+  // si no lo es, el propio último fragmento es la ciudad/estado
+  // (con 3+ partes sin país claro, el penúltimo sigue siendo la mejor opción)
+  let ciudadEstadoProvincia: string | null = null
+  if (ultimoEsPais) {
+    ciudadEstadoProvincia = partes.length >= 3 ? partes[partes.length - 2] : null
+  } else {
+    // Último no es país: con 3+ partes usar el penúltimo como ciudad
+    ciudadEstadoProvincia = partes.length >= 3
+      ? partes[partes.length - 2]
+      : ultimo
+  }
+
   const calleRaw = partes[0]
 
-  // Detectar si el fragmento de calle comienza con número (ej: "1600 Amphitheatre Parkway")
+  // Detectar si el fragmento de calle comienza con número (ej: "1600 Amphitheatre Pkwy")
   const numMatch = calleRaw.match(/^(\d+)\s+(.+)$/)
   const nombreCalle = numMatch ? numMatch[2] : calleRaw
   const numeroCalle = numMatch ? numMatch[1] : null
