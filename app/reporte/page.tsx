@@ -495,7 +495,7 @@ export default function ReportePage() {
       /** Encabezado de sección con fondo gris claro */
       const seccion = (label: string) => {
         filaImpar = false   // resetear alternancia al inicio de cada sección
-        y += 5
+        y += 8
         checkPage(12)
         pdf.setFillColor(245, 245, 245)
         pdf.rect(MX - 2, y - 5, ANCHO + 4, 9, 'F')
@@ -506,7 +506,7 @@ export default function ReportePage() {
         pdf.setFont('helvetica', 'bold')
         pdf.setTextColor(80, 80, 80)
         pdf.text(label.toUpperCase(), MX + 3, y)
-        y += 7
+        y += 11    // espacio entre título de sección y primer elemento
       }
 
       /** Fila clave — valor con línea separadora */
@@ -704,7 +704,9 @@ export default function ReportePage() {
         pdf.text(`Página ${p} de ${total}`, PW - MX, PH - 8, { align: 'right' })
       }
 
-      const nombre = `reporte-${reporte.modulo}-${reporte.fileName.replace(/\s+/g, '_')}.pdf`
+      // Quitar extensión del archivo (.txt, .csv, .tsv) antes de armar el nombre del PDF
+      const sinExt = reporte.fileName.replace(/\.[^.]+$/, '')
+      const nombre = `reporte-${reporte.modulo}-${sinExt.replace(/\s+/g, '_')}.pdf`
       pdf.save(nombre)
       toast.success('PDF descargado correctamente')
     } catch (err) {
