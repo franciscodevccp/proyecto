@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { Toaster, toast } from 'react-hot-toast'
 import { useDarkMode } from '../hooks/useDarkMode'
 import {
   Database, TrendingUp, Download, Users, MapPin,
@@ -449,7 +450,7 @@ export default function ReportePage() {
   const [cargando, setCargando]   = useState(false)
   const [descargando, setDescargando] = useState(false)
 
-  /** Genera y descarga el reporte como PDF usando html2canvas + jsPDF */
+  /** Genera y descarga el reporte como PDF usando html2canvas + jsPDF v2 */
   async function descargarPDF() {
     const elemento = document.getElementById('reporte-documento')
     if (!elemento || !reporte) return
@@ -461,22 +462,23 @@ export default function ReportePage() {
         import('jspdf'),
       ])
 
-      // Captura el elemento como imagen en alta resolución
+      // Captura el elemento como imagen en alta resolución con fondo blanco
       const canvas = await html2canvas(elemento, {
         scale: 2,
         useCORS: true,
+        allowTaint: true,
         logging: false,
         backgroundColor: '#ffffff',
       })
 
-      const imgData  = canvas.toDataURL('image/jpeg', 0.95)
-      const pdf      = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
-      const pageW    = pdf.internal.pageSize.getWidth()
-      const pageH    = pdf.internal.pageSize.getHeight()
-      const imgW     = pageW
-      const imgH     = (canvas.height * imgW) / canvas.width
+      const imgData = canvas.toDataURL('image/jpeg', 0.92)
+      const pdf     = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      const pageW   = pdf.internal.pageSize.getWidth()
+      const pageH   = pdf.internal.pageSize.getHeight()
+      const imgW    = pageW
+      const imgH    = (canvas.height * imgW) / canvas.width
 
-      // Paginación automática si el contenido supera una hoja
+      // Paginación automática si el contenido supera una hoja A4
       let heightLeft = imgH
       let position   = 0
 
@@ -484,16 +486,18 @@ export default function ReportePage() {
       heightLeft -= pageH
 
       while (heightLeft > 0) {
-        position -= pageH
+        position  -= pageH
         pdf.addPage()
         pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH)
         heightLeft -= pageH
       }
 
-      const nombreArchivo = `reporte-${reporte.modulo}-${reporte.fileName.replace(/\s+/g, '_')}.pdf`
-      pdf.save(nombreArchivo)
+      const nombre = `reporte-${reporte.modulo}-${reporte.fileName.replace(/\s+/g, '_')}.pdf`
+      pdf.save(nombre)
+      toast.success('PDF descargado')
     } catch (err) {
       console.error('Error generando PDF:', err)
+      toast.error('Error al generar el PDF: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setDescargando(false)
     }
@@ -541,6 +545,7 @@ export default function ReportePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
+      <Toaster position="top-right" />
 
       {/* Estilos de impresión */}
       <style>{`
