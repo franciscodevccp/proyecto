@@ -466,79 +466,106 @@ export default function ReportePage() {
       const ANCHO = PW - MX * 2
       let y       = MX
 
+      // ── Colores por módulo ────────────────────────────────────────────────
+      const accentRGB: Record<Modulo, [number, number, number]> = {
+        famosos: [124,  58, 237],   // purple-600
+        comunas: [ 37, 99, 235],    // blue-600
+        lugares: [  5, 150, 105],   // teal-600
+      }
+      const [AR, AG, AB] = accentRGB[reporte.modulo]
+
       // ── Helpers ───────────────────────────────────────────────────────────
 
       /** Avanza a nueva página si el contenido no cabe */
       const checkPage = (alto = 8) => {
-        if (y + alto > PH - MX) { pdf.addPage(); y = MX }
+        if (y + alto > PH - 18) { pdf.addPage(); y = MX }
       }
 
-      /** Escribe texto con wrap y avanza y */
-      const txt = (texto: string, sz: number, negrita: boolean, r: number, g: number, b: number) => {
+      /** Texto con wrap automático, color siempre explícito */
+      const txt = (texto: string, sz: number, negrita: boolean, cr = 50, cg = 50, cb = 50) => {
         pdf.setFontSize(sz)
         pdf.setFont('helvetica', negrita ? 'bold' : 'normal')
-        pdf.setTextColor(r, g, b)
+        pdf.setTextColor(cr, cg, cb)
         const lines = pdf.splitTextToSize(texto, ANCHO) as string[]
-        checkPage(lines.length * sz * 0.42 + 2)
+        checkPage(lines.length * sz * 0.42 + 3)
         pdf.text(lines, MX, y)
-        y += lines.length * sz * 0.42 + 2
+        y += lines.length * sz * 0.42 + 3
       }
 
-      /** Separador de sección */
+      /** Encabezado de sección con fondo gris claro */
       const seccion = (label: string) => {
-        y += 3
-        checkPage(10)
-        pdf.setDrawColor(220, 220, 220)
-        pdf.setLineWidth(0.3)
-        pdf.line(MX, y, MX + ANCHO, y)
-        y += 4
-        pdf.setFontSize(8)
-        pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(150, 150, 150)
-        pdf.text(label.toUpperCase(), MX, y)
+        filaImpar = false   // resetear alternancia al inicio de cada sección
         y += 5
+        checkPage(12)
+        pdf.setFillColor(245, 245, 245)
+        pdf.rect(MX - 2, y - 5, ANCHO + 4, 9, 'F')
+        // Barra de acento a la izquierda
+        pdf.setFillColor(AR, AG, AB)
+        pdf.rect(MX - 2, y - 5, 2.5, 9, 'F')
+        pdf.setFontSize(7.5)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(80, 80, 80)
+        pdf.text(label.toUpperCase(), MX + 3, y)
+        y += 7
       }
 
-      /** Fila clave — valor */
+      /** Fila clave — valor con línea separadora */
+      let filaImpar = false
       const stat = (etiqueta: string, valor: string) => {
         checkPage(7)
-        pdf.setFontSize(10)
+        if (filaImpar) {
+          pdf.setFillColor(251, 251, 251)
+          pdf.rect(MX - 2, y - 4.5, ANCHO + 4, 7, 'F')
+        }
+        filaImpar = !filaImpar
+        pdf.setFontSize(9.5)
         pdf.setFont('helvetica', 'normal')
-        pdf.setTextColor(80, 80, 80)
-        pdf.text(etiqueta, MX, y)
+        pdf.setTextColor(70, 70, 70)
+        pdf.text(etiqueta, MX + 1, y)
         pdf.setFont('helvetica', 'bold')
-        pdf.setTextColor(30, 30, 30)
+        pdf.setTextColor(20, 20, 20)
         pdf.text(valor, MX + ANCHO, y, { align: 'right' })
-        y += 6
+        pdf.setDrawColor(235, 235, 235)
+        pdf.setLineWidth(0.2)
+        pdf.line(MX - 2, y + 2.5, MX + ANCHO + 2, y + 2.5)
+        y += 7
       }
 
       // ── Encabezado del documento ──────────────────────────────────────────
-      const headerColor: Record<Modulo, [number, number, number]> = {
-        famosos: [245, 243, 255],
-        comunas: [239, 246, 255],
-        lugares: [240, 253, 250],
-      }
-      const [hr, hg, hb] = headerColor[reporte.modulo]
-      pdf.setFillColor(hr, hg, hb)
-      pdf.rect(0, 0, PW, 42, 'F')
+      // Franja de color sólido arriba
+      pdf.setFillColor(AR, AG, AB)
+      pdf.rect(0, 0, PW, 5, 'F')
 
-      pdf.setFontSize(8)
+      // Fondo blanco del header
+      pdf.setFillColor(255, 255, 255)
+      pdf.rect(0, 5, PW, 40, 'F')
+
+      y = 14
+      pdf.setFontSize(7.5)
       pdf.setFont('helvetica', 'normal')
-      pdf.setTextColor(150, 150, 150)
-      pdf.text('REPORTE DE ANÁLISIS EJECUTIVO', MX, y + 4)
-      y += 8
+      pdf.setTextColor(160, 160, 160)
+      pdf.text('REPORTE DE ANÁLISIS EJECUTIVO', MX, y)
+      y += 7
 
-      pdf.setFontSize(18)
+      pdf.setFontSize(19)
       pdf.setFont('helvetica', 'bold')
-      pdf.setTextColor(17, 24, 39)
+      pdf.setTextColor(15, 23, 42)
       pdf.text(reporte.fileName, MX, y)
       y += 8
 
       pdf.setFontSize(9)
       pdf.setFont('helvetica', 'normal')
-      pdf.setTextColor(107, 114, 128)
-      pdf.text(`${MODULO_LABEL[reporte.modulo]}  ·  Generado el ${fmtDate(new Date().toISOString())}`, MX, y)
-      y += 12
+      pdf.setTextColor(AR, AG, AB)
+      pdf.text(MODULO_LABEL[reporte.modulo], MX, y)
+      pdf.setTextColor(160, 160, 160)
+      pdf.text(`  ·  Generado el ${fmtDate(new Date().toISOString())}`, MX + pdf.getTextWidth(MODULO_LABEL[reporte.modulo]), y)
+      y += 5
+
+      // Línea divisora bajo el header
+      pdf.setDrawColor(230, 230, 230)
+      pdf.setLineWidth(0.4)
+      pdf.line(MX, y, MX + ANCHO, y)
+      y += 8
 
       // ── Contenido por módulo ──────────────────────────────────────────────
 
@@ -551,13 +578,13 @@ export default function ReportePage() {
           `Se detectaron ${r.totalInput} registros con ${plural(r.formatos.length, 'formato de fecha distinto', 'formatos de fecha distintos')}. ` +
           `Tras la normalización quedaron ${r.totalOutput} famosos únicos` +
           (r.duplicates > 0 ? ` (${r.duplicates} duplicados eliminados)` : '') + '.',
-          10, false, 55, 65, 81,
+          10, false, 60, 60, 60,
         )
         if (r.masAntiguo && r.masReciente) {
           txt(
             `El más antiguo: ${r.masAntiguo.nombre} (${r.masAntiguo.display}). ` +
             `El más reciente: ${r.masReciente.nombre} (${r.masReciente.display}).`,
-            10, false, 55, 65, 81,
+            10, false, 60, 60, 60,
           )
         }
         if (r.cumpleHoy.length > 0) {
@@ -566,7 +593,7 @@ export default function ReportePage() {
           txt(
             `Próximo cumpleaños: ${r.proximoCumple.nombre} el ${r.proximoCumple.diaMes} ` +
             `(en ${plural(r.proximoCumple.diasFaltan, 'día', 'días')}).`,
-            10, false, 55, 65, 81,
+            10, false, 60, 60, 60,
           )
         }
 
@@ -601,11 +628,11 @@ export default function ReportePage() {
         seccion('Resumen ejecutivo')
         txt(
           `Se procesaron ${r.totalInput} registros. Tras eliminar ${r.duplicates} duplicados (${r.pctDups}%) quedaron ${r.totalOutput} comunas únicas.`,
-          10, false, 55, 65, 81,
+          10, false, 60, 60, 60,
         )
         txt(
           `De esas, ${r.changes} fueron normalizadas (${r.pctNorm}%) y ${r.sinCambio} ya estaban en formato correcto.`,
-          10, false, 55, 65, 81,
+          10, false, 60, 60, 60,
         )
         if (r.qualityBefore !== null && r.qualityAfter !== null) {
           txt(`Score de calidad: ${r.qualityBefore}/100 → ${r.qualityAfter}/100.`, 10, false, 55, 65, 81)
@@ -632,18 +659,18 @@ export default function ReportePage() {
         seccion('Resumen ejecutivo')
         txt(
           `Se procesaron ${r.totalInput} registros. Tras eliminar ${r.duplicates} duplicados (${r.pctDups}%) quedaron ${r.totalOutput} lugares únicos.`,
-          10, false, 55, 65, 81,
+          10, false, 60, 60, 60,
         )
         txt(
           `${r.conGeoref} tienen georeferencia válida (${r.pctGeoref}%)` +
           (r.sinGeoref > 0 ? `, ${r.sinGeoref} sin georeferencia` : '') + '.',
-          10, false, 55, 65, 81,
+          10, false, 60, 60, 60,
         )
         if (r.totalPaises > 0) {
           txt(
             `Abarca ${plural(r.totalPaises, 'país', 'países')}` +
             (r.paises[0] ? `. El más frecuente: ${r.paises[0].pais} (${r.paises[0].count} lugares)` : '') + '.',
-            10, false, 55, 65, 81,
+            10, false, 60, 60, 60,
           )
         }
 
