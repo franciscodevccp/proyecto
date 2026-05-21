@@ -134,6 +134,12 @@ export default function PaginaFamosos() {
           </div>
           <div className="flex items-center gap-3">
             <Link
+              href="/"
+              className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              Comunas
+            </Link>
+            <Link
               href="/lugares"
               className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
