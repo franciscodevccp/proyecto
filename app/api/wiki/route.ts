@@ -51,6 +51,33 @@ const WIKI_HEADERS = {
   'Accept': 'application/json',
 }
 
+// ─── Throttle server-side ─────────────────────────────────────────────────────
+
+/**
+ * Intervalo mínimo entre peticiones salientes a Wikipedia (ms).
+ * Wikipedia permite ~200 req/s con User-Agent válido, pero en la práctica
+ * manda 429 cuando llegan muchas peticiones en ráfaga desde la misma IP.
+ * Con 200 ms entre peticiones hacemos máx. 5 req/s → sin 429.
+ */
+const WIKI_DELAY_MS = 200
+
+/** Timestamp en que se envió la última petición a Wikipedia */
+let lastWikiRequest = 0
+
+/**
+ * Espera lo necesario para respetar WIKI_DELAY_MS entre peticiones.
+ * Actualiza lastWikiRequest de forma atómica para que peticiones
+ * concurrentes se encolen correctamente.
+ */
+function throttleWiki(): Promise<void> {
+  const now = Date.now()
+  const delay = Math.max(0, lastWikiRequest + WIKI_DELAY_MS - now)
+  // Reservar el slot ANTES de esperar (evita race conditions)
+  lastWikiRequest = now + delay
+  if (delay === 0) return Promise.resolve()
+  return new Promise((resolve) => setTimeout(resolve, delay))
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -64,6 +91,9 @@ async function fetchSummary(
 ): Promise<{ raw: WikiRawResponse; status: number } | null> {
   const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(titulo)}`
   try {
+    // Respetar el intervalo mínimo entre peticiones para evitar 429
+    await throttleWiki()
+    if (signal.aborted) return null
     const res = await fetch(url, { headers: WIKI_HEADERS, signal })
     console.log(`[wiki] ${titulo} → HTTP ${res.status}`)
     if (!res.ok) return { raw: {}, status: res.status }
