@@ -131,8 +131,8 @@ export function generateSQL(
     lines.push(`  normalizado ${varchar} NOT NULL`)
     lines.push(`) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`)
   } else {
-    // SQLite
-    lines.push(`CREATE TABLE IF NOT EXISTS "${tableName}" (`)
+    // SQLite — el DROP TABLE IF EXISTS anterior garantiza que no existe, por eso no se usa IF NOT EXISTS
+    lines.push(`CREATE TABLE "${tableName}" (`)
     lines.push(`  id INTEGER PRIMARY KEY AUTOINCREMENT,`)
     if (includeOriginal) lines.push(`  original TEXT NOT NULL,`)
     lines.push(`  normalizado TEXT NOT NULL`)
@@ -362,8 +362,8 @@ export function generateFamososSQL(
     lines.push(`  es_cumpleanos     TINYINT(1) DEFAULT 0`)
     lines.push(`) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`)
   } else {
-    // SQLite
-    lines.push(`CREATE TABLE IF NOT EXISTS ${q(tableName)} (`)
+    // SQLite — el DROP TABLE IF EXISTS anterior garantiza que no existe, por eso no se usa IF NOT EXISTS
+    lines.push(`CREATE TABLE ${q(tableName)} (`)
     lines.push(`  id                INTEGER PRIMARY KEY AUTOINCREMENT,`)
     lines.push(`  nombre            TEXT NOT NULL,`)
     lines.push(`  fecha_original    TEXT NOT NULL,`)

@@ -142,8 +142,11 @@ export function parseContent(content: string, options: ParseOptions = {}): Parse
 
   // Detectar si hay encabezado
   const hasHeader = options.hasHeader ?? detectHeader(rows)
+  // M-01: se usa el índice `i` del map en lugar de indexOf para evitar que
+  // columnas con encabezado vacío y el mismo valor de búsqueda reciban el
+  // mismo número cuando hay encabezados duplicados o vacíos consecutivos.
   const headers = hasHeader
-    ? rows[0].map((h) => h || `Columna ${rows[0].indexOf(h) + 1}`)
+    ? rows[0].map((h, i) => h || `Columna ${i + 1}`)
     : rows[0].map((_, i) => `Columna ${i + 1}`)
   const dataRows = hasHeader ? rows.slice(1) : rows
 

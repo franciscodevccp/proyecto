@@ -49,12 +49,14 @@ export default function PaginaFamosos() {
   /**
    * Si la URL trae ?batch=ID (viene desde analytics/historial),
    * carga ese batch automáticamente sin necesidad de subir archivo.
+   * M-11: se añadió AbortController para cancelar el fetch si searchParams cambia.
    */
   useEffect(() => {
     const batchId = searchParams.get('batch')
     if (!batchId) return
 
-    fetch(`/api/famosos/batch?id=${batchId}`)
+    const controller = new AbortController()
+    fetch(`/api/famosos/batch?id=${batchId}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((d) => {
         const b = d.batch
@@ -70,24 +72,29 @@ export default function PaginaFamosos() {
         })
         setTab('datos')
       })
-      .catch(() => {/* silencioso */})
+      .catch((e: unknown) => { if (e instanceof Error && e.name !== 'AbortError') console.warn('[famosos]', e) })
+    return () => controller.abort()
   }, [searchParams])
 
   /**
    * Fetch centralizado de los famosos del batch activo.
    * Se dispara reactivamente cuando cambia resultado?.batchId.
    * Los tres componentes hijos reciben los datos como prop.
+   * M-10: se añadió AbortController para cancelar el fetch si el batch cambia
+   * antes de que llegue la respuesta (evita actualizaciones de estado obsoletas).
    */
   useEffect(() => {
     if (!resultado?.batchId) {
       setFamososData(null)
       return
     }
+    const controller = new AbortController()
     setFamososData(null) // reinicia el estado de carga antes de cada fetch
-    fetch(`/api/famosos/batch?id=${resultado.batchId}`)
+    fetch(`/api/famosos/batch?id=${resultado.batchId}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((d) => setFamososData(d.batch?.famosos ?? []))
-      .catch(() => setFamososData([]))
+      .catch((e: unknown) => { if (!(e instanceof Error) || e.name !== 'AbortError') setFamososData([]) })
+    return () => controller.abort()
   }, [resultado?.batchId])
 
   /**
@@ -194,12 +201,12 @@ export default function PaginaFamosos() {
             </Link>
             <button
               onClick={toggleDark}
+              aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
               className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             >
               {isDark
-                ? <Sun className="w-4 h-4 text-yellow-400" />
-                : <Moon className="w-4 h-4 text-gray-500" />
+                ? <Sun className="w-4 h-4 text-yellow-400" aria-hidden="true" />
+                : <Moon className="w-4 h-4 text-gray-500" aria-hidden="true" />
               }
             </button>
           </div>

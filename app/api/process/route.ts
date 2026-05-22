@@ -32,7 +32,14 @@ export async function POST(req: NextRequest) {
     const rulesRaw = form.get('rules') as string | null
     if (rulesRaw) {
       try {
-        partialRules = JSON.parse(rulesRaw)
+        const parsed: unknown = JSON.parse(rulesRaw)
+        // M-09: validar que el JSON sea un objeto plano y no un array ni null.
+        // Evita que valores malformados (ej: [true] o "string") lleguen a resolveRuleSet.
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          partialRules = parsed as Partial<ETLRuleSet>
+        } else {
+          console.warn('[process] JSON de reglas no es un objeto plano, usando defaults')
+        }
       } catch (e) {
         console.warn('[process] JSON de reglas inválido, usando defaults:', e)
       }

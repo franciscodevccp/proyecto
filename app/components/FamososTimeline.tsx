@@ -8,16 +8,15 @@
  * El año está en el índice 2 de split('-'), NO en el índice 0.
  * Ejemplo: "14-03-1879" → partes[2] = "1879" (Einstein)
  *
- * Enriquecimiento progresivo con Wikipedia REST API (gratuita, sin clave):
- *   GET https://en.wikipedia.org/api/rest_v1/page/summary/{nombre}
- *   → description (string corta) + thumbnail.source (URL de foto)
- * Las tarjetas muestran skeleton mientras carga y gradiente de era si no hay foto.
+ * Enriquecimiento con Wikipedia a través del proxy /api/wiki (servidor).
+ * El proxy cachea las respuestas 1 hora para que recargar el mismo batch
+ * sea instantáneo y no golpee la API externa.
  *
- * OPTIMIZACIÓN (Item 5): los datos llegan como prop desde famosos/page.tsx,
- * que centraliza el único fetch a /api/famosos/batch. Ya no se hace fetch aquí.
+ * OPTIMIZACIÓN: los datos llegan como prop desde famosos/page.tsx,
+ * que centraliza el único fetch a /api/famosos/batch.
  */
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Clock3, Loader2 } from 'lucide-react'
 import type { FamosoRaw } from './FamososBirthdayBanner'
 
@@ -34,12 +33,6 @@ interface FamosoCronologico {
 interface WikiInfo {
   descripcion: string | null
   foto: string | null
-}
-
-/** Subconjunto de la respuesta de Wikipedia que nos interesa */
-interface WikiResponse {
-  description?: string
-  thumbnail?: { source?: string }
 }
 
 interface FamososTimelineProps {
@@ -61,43 +54,42 @@ const GAP = 16
 /** Altura de la foto en cada tarjeta (px) */
 const FOTO_H = 120
 
-/** Tamaño del lote para las peticiones a Wikipedia */
-const WIKI_LOTE = 8
-
 /**
  * Cantidad máxima de items mostrados en el timeline.
- * Con archivos muy grandes el scroll horizontal se vuelve inusable y
- * las peticiones masivas a Wikipedia degeneran la experiencia.
- * Se toman los primeros MAX_TIMELINE_ITEMS ordenados cronológicamente
- * (los más antiguos) para que la línea de tiempo sea siempre coherente.
+ * Se toman los primeros MAX ordenados cronológicamente.
  */
 const MAX_TIMELINE_ITEMS = 50
+
+/**
+ * Cuántas peticiones a /api/wiki se lanzan en paralelo al mismo tiempo.
+ * Limita la carga sobre el servidor sin sacrificar velocidad perceptible.
+ */
+const CONCURRENCIA = 6
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
  * Extrae el año numérico de una fecha DD-MM-YYYY.
  * El año está siempre en la posición 2 del array resultante de split('-').
- * Ejemplo: "01-06-1926" → 1926
  */
 function extractAnio(fecha: string): number {
   const partes = fecha.split('-')
   return parseInt(partes[2], 10)
 }
 
-/** Etiqueta de año para el eje (soporta a.C. aunque en la práctica no llegan aquí) */
+/** Etiqueta de año para el eje */
 function formatAnio(anio: number): string {
   return anio < 0 ? `${Math.abs(anio)} a.C.` : String(anio)
 }
 
-/** Convierte DD-MM-YYYY → DD/MM/YYYY para la tarjeta */
+/** Convierte DD-MM-YYYY → DD/MM/YYYY para mostrar en la tarjeta */
 function formatFechaNorm(fecha: string): string {
   return fecha.replace(/-/g, '/')
 }
 
 /**
  * Gradiente de fondo según la era del personaje.
- * Se muestra cuando Wikipedia no devuelve foto.
+ * Se muestra cuando el proxy no devuelve foto.
  */
 function eraGradient(anio: number): string {
   if (anio < 1700) return 'linear-gradient(160deg,#4c1d95 0%,#6d28d9 100%)'
@@ -107,95 +99,93 @@ function eraGradient(anio: number): string {
   return 'linear-gradient(160deg,#9d174d 0%,#ec4899 100%)'
 }
 
+/**
+ * Carga los datos de Wikipedia para un lote de items en paralelo
+ * a través del proxy /api/wiki.
+ *
+ * @param lote   - Items a enriquecer
+ * @param signal - AbortSignal para cancelar si el componente se desmonta
+ * @returns Mapa id → WikiInfo obtenido en este lote
+ */
+async function fetchLoteWiki(
+  lote: FamosoCronologico[],
+  signal: AbortSignal,
+): Promise<Map<string, WikiInfo>> {
+  const resultado = new Map<string, WikiInfo>()
+  await Promise.all(
+    lote.map(async (item) => {
+      try {
+        const url = `/api/wiki?nombre=${encodeURIComponent(item.nombre)}`
+        const res = await fetch(url, { signal })
+        if (!res.ok) {
+          resultado.set(item.id, { descripcion: null, foto: null })
+          return
+        }
+        const data = (await res.json()) as WikiInfo
+        resultado.set(item.id, data)
+      } catch {
+        // Error de red o abort — marca como sin datos (muestra gradiente de era)
+        resultado.set(item.id, { descripcion: null, foto: null })
+      }
+    }),
+  )
+  return resultado
+}
+
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function FamososTimeline({ famosos }: FamososTimelineProps) {
   /**
    * Mapa de enriquecimiento Wikipedia:
    *   undefined → todavía no cargado (skeleton)
-   *   null      → Wikipedia no encontró el personaje
-   *   WikiInfo  → datos disponibles
+   *   WikiInfo  → datos disponibles (foto/descripcion pueden ser null)
    */
-  const [wiki, setWiki] = useState<Map<string, WikiInfo | null>>(new Map())
-
-  /** Evita que el efecto de Wikipedia se dispare dos veces en Strict Mode */
-  const wikiEnCurso = useRef(false)
+  const [wiki, setWiki] = useState<Map<string, WikiInfo>>(new Map())
 
   // ── Derivar items desde el prop ────────────────────────────────────────────
-  // Si famosos es null (cargando) items es vacío y se muestra el skeleton.
-  // Si cambia el prop (nuevo batch), se resetean el mapa wiki y el flag.
-  const items: FamosoCronologico[] = famosos === null
-    ? []
-    : famosos
-        .filter((f): f is FamosoRaw & { fechaNormalizada: string } =>
-          f.fechaNormalizada !== null && f.fechaNormalizada.length > 0,
-        )
-        .map((f) => ({
-          id: f.id,
-          nombre: f.nombre,
-          fechaOriginal: f.fechaOriginal,
-          fechaNormalizada: f.fechaNormalizada,
-          anio: extractAnio(f.fechaNormalizada),
-        }))
-        .sort((a, b) => a.anio - b.anio)
-        .slice(0, MAX_TIMELINE_ITEMS)
-
-  // Cuando llegan datos nuevos (famosos pasa de null a array) se resetea el
-  // estado de Wikipedia para que el enriquecimiento empiece desde cero.
-  useEffect(() => {
-    wikiEnCurso.current = false
-    setWiki(new Map())
+  const items = useMemo<FamosoCronologico[]>(() => {
+    if (famosos === null) return []
+    return famosos
+      .filter((f): f is FamosoRaw & { fechaNormalizada: string } =>
+        f.fechaNormalizada !== null && f.fechaNormalizada.length > 0,
+      )
+      .map((f) => ({
+        id:               f.id,
+        nombre:           f.nombre,
+        fechaOriginal:    f.fechaOriginal,
+        fechaNormalizada: f.fechaNormalizada,
+        anio:             extractAnio(f.fechaNormalizada),
+      }))
+      .sort((a, b) => a.anio - b.anio)
+      .slice(0, MAX_TIMELINE_ITEMS)
   }, [famosos])
 
-  // ── Enriquecimiento Wikipedia (lotes de WIKI_LOTE) ────────────────────────
+  // ── Enriquecimiento Wikipedia ──────────────────────────────────────────────
   useEffect(() => {
-    if (items.length === 0 || wikiEnCurso.current) return
-    wikiEnCurso.current = true
-    // Flag de cancelación: si el componente se desmonta a mitad de las
-    // peticiones, la función async lo detecta y deja de llamar a setWiki,
-    // evitando el memory leak de actualizar estado en un componente desmontado.
-    let cancelled = false
+    // Limpiar wiki anterior cuando llegan datos nuevos o cuando no hay items
+    setWiki(new Map())
+    if (items.length === 0) return
+
+    const controller = new AbortController()
 
     async function cargarWiki() {
-      for (let i = 0; i < items.length; i += WIKI_LOTE) {
-        if (cancelled) return
-        const lote = items.slice(i, i + WIKI_LOTE)
-        await Promise.all(
-          lote.map(async (item) => {
-            if (cancelled) return
-            try {
-              const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.nombre)}`
-              const res = await fetch(url)
-              if (cancelled) return
-              if (!res.ok) {
-                if (!cancelled) setWiki((prev) => new Map(prev).set(item.id, null))
-                return
-              }
-              const data = (await res.json()) as WikiResponse
-              if (!cancelled) {
-                setWiki((prev) =>
-                  new Map(prev).set(item.id, {
-                    descripcion: data.description ?? null,
-                    foto: data.thumbnail?.source ?? null,
-                  }),
-                )
-              }
-            } catch {
-              if (!cancelled) setWiki((prev) => new Map(prev).set(item.id, null))
-            }
-          }),
-        )
-        // Pausa de 150 ms entre lotes para no saturar la API de Wikipedia
-        if (!cancelled && i + WIKI_LOTE < items.length) {
-          await new Promise((r) => setTimeout(r, 150))
-        }
+      // Cargar en lotes de CONCURRENCIA para no saturar el servidor
+      for (let i = 0; i < items.length; i += CONCURRENCIA) {
+        if (controller.signal.aborted) return
+        const lote = items.slice(i, i + CONCURRENCIA)
+        const parcial = await fetchLoteWiki(lote, controller.signal)
+        if (controller.signal.aborted) return
+        // Actualizar el mapa acumulando los nuevos resultados
+        setWiki((prev) => {
+          const next = new Map(prev)
+          parcial.forEach((v, k) => next.set(k, v))
+          return next
+        })
       }
     }
 
     cargarWiki()
-    return () => {
-      cancelled = true
-    }
+    return () => controller.abort()
   }, [items])
 
   // ── Estado: cargando ───────────────────────────────────────────────────────
@@ -211,16 +201,7 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
   // ── Sin datos normalizados ─────────────────────────────────────────────────
   if (items.length === 0) return null
 
-  /**
-   * Ancho total del contenedor scrollable.
-   * Cada tarjeta ocupa CARD_W + GAP; más un GAP inicial al final.
-   */
-  const totalW = (CARD_W + GAP) * items.length + GAP
-
-  /**
-   * Indica si el timeline fue recortado al máximo de items permitido.
-   * Se usa en la cabecera para informar al usuario.
-   */
+  const totalW  = (CARD_W + GAP) * items.length + GAP
   const recortado = items.length === MAX_TIMELINE_ITEMS
 
   return (
@@ -233,7 +214,6 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
           <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             Línea de tiempo
           </span>
-          {/* Badge cuando el timeline está recortado al máximo */}
           {recortado && (
             <span className="text-xs bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
               primeros {MAX_TIMELINE_ITEMS}
@@ -248,7 +228,6 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
       </div>
 
       {/* Scroll horizontal ────────────────────────────────────────────────── */}
-      {/* Scrollbar personalizada — reemplaza la barra gris del sistema */}
       <style>{`
         .tl-scroll::-webkit-scrollbar { height: 5px; }
         .tl-scroll::-webkit-scrollbar-track { background: transparent; margin: 0 20px; border-radius: 999px; }
@@ -256,73 +235,59 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
         .tl-scroll::-webkit-scrollbar-thumb:hover { background: #7c3aed; }
       `}</style>
       <div className="tl-scroll overflow-x-auto overscroll-x-contain pb-1">
-        <div
-          className="relative"
-          style={{ width: totalW, minWidth: totalW }}
-        >
-          {/*
-           * Línea horizontal central.
-           * pt-4 = 16px → el dot (h-5 = 20px) queda centrado a y = 16 + 10 = 26px
-           * La línea de 2px se sitúa en top = 25px para alinearse con el centro del dot.
-           * Se extiende desde el centro de la primera tarjeta hasta el de la última.
-           */}
+        <div className="relative" style={{ width: totalW, minWidth: totalW }}>
+
+          {/* Línea horizontal del eje temporal */}
           <div
             className="absolute z-0 rounded-full"
             style={{
-              top: 25,
-              left: GAP + CARD_W / 2,
-              width: totalW - GAP - CARD_W,
-              height: 2,
+              top:        25,
+              left:       GAP + CARD_W / 2,
+              width:      totalW - GAP - CARD_W,
+              height:     2,
               background: 'linear-gradient(90deg,#a855f7 0%,#7c3aed 50%,#6366f1 100%)',
             }}
           />
 
-          {/* Fila de tarjetas ──────────────────────────────────────────── */}
+          {/* Fila de tarjetas ────────────────────────────────────────────── */}
           <div
             className="flex pt-4 pb-5"
             style={{ gap: GAP, paddingLeft: GAP, paddingRight: GAP }}
           >
             {items.map((item, idx) => {
-              /** undefined = cargando · null = no encontrado · WikiInfo = disponible */
               const wikiData = wiki.get(item.id)
-              const esCargandoWiki = wikiData === undefined
+              /** true mientras no llegó la respuesta del proxy */
+              const esCargando = wikiData === undefined
 
               return (
-                <div
-                  key={item.id}
-                  className="shrink-0 flex flex-col"
-                  style={{ width: CARD_W }}
-                >
+                <div key={item.id} className="shrink-0 flex flex-col" style={{ width: CARD_W }}>
+
                   {/* Punto numerado sobre la línea ─────────────────────── */}
                   <div className="flex justify-center mb-3 relative z-10">
                     <div
                       className="w-5 h-5 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-900 shadow-md"
                       style={{ background: '#7c3aed' }}
                     >
-                      <span
-                        className="text-white font-black leading-none select-none"
-                        style={{ fontSize: 8 }}
-                      >
+                      <span className="text-white font-black leading-none select-none" style={{ fontSize: 8 }}>
                         {idx + 1}
                       </span>
                     </div>
                   </div>
 
-                  {/* Tarjeta — enlace a Wikipedia en pestaña nueva */}
+                  {/* Tarjeta — enlace a Wikipedia */}
                   <a
                     href={`https://en.wikipedia.org/wiki/${encodeURIComponent(item.nombre)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col bg-white dark:bg-gray-800 flex-1 transition-all duration-200 hover:shadow-lg hover:border-purple-300 dark:hover:border-purple-600 hover:-translate-y-1 cursor-pointer"
-                    title={`Ver ${item.nombre} en Wikipedia`}
+                    className="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col bg-white dark:bg-gray-800 flex-1 transition-all duration-200 hover:shadow-lg hover:border-purple-300 dark:hover:border-purple-600 hover:-translate-y-1"
+                    aria-label={`Ver ${item.nombre} en Wikipedia`}
                   >
 
-                    {/* Cabecera visual: foto o gradiente de era */}
+                    {/* Cabecera visual: skeleton → foto → gradiente de era */}
                     <div className="relative w-full overflow-hidden" style={{ height: FOTO_H }}>
-                      {esCargandoWiki ? (
-                        // Skeleton mientras carga Wikipedia
+                      {esCargando ? (
                         <div className="w-full h-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                      ) : wikiData?.foto ? (
+                      ) : wikiData.foto ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={wikiData.foto}
@@ -330,7 +295,7 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
                           className="w-full h-full object-cover object-top"
                           loading="lazy"
                           onError={(e) => {
-                            // Si la imagen falla, mostrar el gradiente de era
+                            // Si la imagen externa falla, mostrar el gradiente de era
                             const parent = e.currentTarget.parentElement
                             if (parent) {
                               parent.style.background = eraGradient(item.anio)
@@ -339,21 +304,13 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
                           }}
                         />
                       ) : (
-                        // Gradiente de era cuando Wikipedia no tiene foto
-                        <div
-                          className="w-full h-full"
-                          style={{ background: eraGradient(item.anio) }}
-                        />
+                        <div className="w-full h-full" style={{ background: eraGradient(item.anio) }} />
                       )}
 
                       {/* Badge del año superpuesto */}
                       <span
                         className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded font-black text-white leading-none"
-                        style={{
-                          background: 'rgba(0,0,0,0.58)',
-                          fontSize: 10,
-                          backdropFilter: 'blur(2px)',
-                        }}
+                        style={{ background: 'rgba(0,0,0,0.58)', fontSize: 10, backdropFilter: 'blur(2px)' }}
                       >
                         {formatAnio(item.anio)}
                       </span>
@@ -377,12 +334,12 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
                       </p>
 
                       {/* Descripción de Wikipedia */}
-                      {esCargandoWiki ? (
+                      {esCargando ? (
                         <div className="space-y-1 mt-0.5">
                           <div className="h-1.5 rounded bg-gray-200 dark:bg-gray-600 animate-pulse w-full" />
                           <div className="h-1.5 rounded bg-gray-200 dark:bg-gray-600 animate-pulse w-2/3" />
                         </div>
-                      ) : wikiData?.descripcion ? (
+                      ) : wikiData.descripcion ? (
                         <p
                           className="text-gray-500 dark:text-gray-400 leading-snug"
                           title={wikiData.descripcion}
@@ -398,7 +355,7 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
                         </p>
                       ) : null}
 
-                      {/* Prueba de normalización (siempre al fondo) */}
+                      {/* Fechas (siempre al fondo) */}
                       <div className="mt-auto pt-1.5 border-t border-gray-100 dark:border-gray-700">
                         <p
                           className="font-mono text-gray-400 dark:text-gray-500 truncate"

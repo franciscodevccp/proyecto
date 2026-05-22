@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import { FileText, Trash2, ExternalLink, RefreshCw } from 'lucide-react'
+import { formatDate } from '../lib/format-date'
 
 /** Resumen de un batch de lugares para el historial */
 interface LugarBatchSummary {
@@ -34,13 +35,6 @@ interface LugaresBatchHistoryProps {
   onDelete?: (id: string) => void
 }
 
-/** Formatea fecha ISO a string legible */
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('es-CL', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
 
 export default function LugaresBatchHistory({ onLoad, onDelete }: LugaresBatchHistoryProps) {
   const [batches, setBatches] = useState<LugarBatchSummary[]>([])
@@ -87,9 +81,12 @@ export default function LugaresBatchHistory({ onLoad, onDelete }: LugaresBatchHi
     setEliminandoId(id)
     setConfirmId(null)
     try {
-      await fetch(`/api/lugares/batch?id=${id}`, { method: 'DELETE' })
-      setBatches((prev) => prev.filter((b) => b.id !== id))
-      onDelete?.(id)
+      // M-17: verificar res.ok antes de actualizar el estado local
+      const res = await fetch(`/api/lugares/batch?id=${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setBatches((prev) => prev.filter((b) => b.id !== id))
+        onDelete?.(id)
+      }
     } finally {
       setEliminandoId(null)
     }

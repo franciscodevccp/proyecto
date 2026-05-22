@@ -57,14 +57,19 @@ export default function FamososTable({ batchId, famosos: famososProp }: FamososT
   const [descargando, setDescargando] = useState<string | null>(null)
 
   // Fetch interno — solo cuando el padre no pasa datos (famososProp === undefined).
+  // M-18: AbortController para cancelar la petición si el componente se desmonta.
   useEffect(() => {
     if (famososProp !== undefined) return
+    const ctrl = new AbortController()
     setCargandoInterno(true)
-    fetch(`/api/famosos/batch?id=${batchId}`)
+    fetch(`/api/famosos/batch?id=${batchId}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((d) => setFamososLocales(d.batch?.famosos ?? []))
-      .catch(() => setFamososLocales([]))
+      .catch((e: unknown) => {
+        if (e instanceof Error && e.name !== 'AbortError') setFamososLocales([])
+      })
       .finally(() => setCargandoInterno(false))
+    return () => ctrl.abort()
   }, [batchId, famososProp])
 
   // Datos efectivos: prop si está disponible, locales en caso contrario.
@@ -193,7 +198,7 @@ export default function FamososTable({ batchId, famosos: famososProp }: FamososT
               <th className="px-4 py-3 text-left">Fecha original</th>
               <th className="px-4 py-3 text-left">Fecha normalizada</th>
               <th className="px-4 py-3 text-left w-16">Edad</th>
-              <th className="px-4 py-3 text-center w-12"><Cake className="w-3.5 h-3.5 inline text-pink-400" /></th>
+              <th scope="col" aria-label="Cumpleaños hoy" className="px-4 py-3 text-center w-12"><Cake className="w-3.5 h-3.5 inline text-pink-400" /></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">

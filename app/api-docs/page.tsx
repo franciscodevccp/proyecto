@@ -6,19 +6,28 @@
  * Incluye el endpoint público y los endpoints de procesamiento por módulo.
  */
 
-import { useState } from 'react'
-import { Database, Copy, Check, Play, BookOpen, ArrowLeft } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Database, Copy, Check, Play, BookOpen, ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
 // ─── Bloque de código con botón copiar ───────────────────────────────────────
 
 function CodeBlock({ code, language = 'json' }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false)
+  // B-08: guardar el timer en un ref para poder limpiarlo si el componente se desmonta
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
+    }
+  }, [])
 
   async function copy() {
     await navigator.clipboard.writeText(code)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    if (timerRef.current !== null) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -112,11 +121,15 @@ const SCHEMA_NORMALIZE_RES = `{
   }
 }`
 
-const CURL_NORMALIZE = `curl -X POST https://sistema.franciscodev.cl/api/public/normalize \\
+// B-07: funciones que reciben el origen dinámico para evitar hardcodear la URL
+function getCurlNormalize(origin: string) {
+  return `curl -X POST ${origin}/api/public/normalize \\
   -H "Content-Type: application/json" \\
   -d '{"data":["Santiago","CONCEPCION","valparaíso"],"rules":{"removeAccents":true,"titleCase":true}}'`
+}
 
-const FETCH_NORMALIZE = `const res = await fetch('https://sistema.franciscodev.cl/api/public/normalize', {
+function getFetchNormalize(origin: string) {
+  return `const res = await fetch('${origin}/api/public/normalize', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -125,6 +138,7 @@ const FETCH_NORMALIZE = `const res = await fetch('https://sistema.franciscodev.c
   }),
 })
 const { results, stats } = await res.json()`
+}
 
 const SCHEMA_PROCESS_REQ = `// multipart/form-data
 file        File      // Archivo .txt, .csv o .tsv
@@ -220,6 +234,10 @@ export default function ApiDocsPage() {
   const [playOutput, setPlayOutput] = useState('')
   const [playLoading, setPlayLoading] = useState(false)
   const [playError, setPlayError]   = useState('')
+
+  // B-07: origen dinámico para que los ejemplos muestren la URL real del servidor
+  const [origin, setOrigin] = useState('https://sistema.franciscodev.cl')
+  useEffect(() => { setOrigin(window.location.origin) }, [])
 
   async function runPlayground() {
     setPlayLoading(true)
@@ -320,9 +338,9 @@ export default function ApiDocsPage() {
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ejemplos</h3>
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">cURL</p>
-            <CodeBlock code={CURL_NORMALIZE} language="bash" />
+            <CodeBlock code={getCurlNormalize(origin)} language="bash" />
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mt-4">JavaScript (fetch)</p>
-            <CodeBlock code={FETCH_NORMALIZE} language="javascript" />
+            <CodeBlock code={getFetchNormalize(origin)} language="javascript" />
           </div>
 
           {/* Reglas ETL */}
@@ -369,7 +387,7 @@ export default function ApiDocsPage() {
                   disabled={playLoading}
                   className="flex items-center gap-2 w-full justify-center bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
                 >
-                  {playLoading ? <span className="animate-spin inline-block">⏳</span> : <Play className="w-4 h-4" />}
+                  {playLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                   {playLoading ? 'Ejecutando…' : 'Ejecutar'}
                 </button>
               </div>
@@ -411,7 +429,7 @@ export default function ApiDocsPage() {
           </div>
           <CodeBlock
             language="bash"
-            code={`curl -X POST https://sistema.franciscodev.cl/api/process \\
+            code={`curl -X POST ${origin}/api/process \\
   -F "file=@comunas.txt" \\
   -F "columnIndex=0" \\
   -F "correct=false" \\
@@ -443,7 +461,7 @@ export default function ApiDocsPage() {
           </div>
           <CodeBlock
             language="bash"
-            code={`curl -X POST https://sistema.franciscodev.cl/api/famosos/process \\
+            code={`curl -X POST ${origin}/api/famosos/process \\
   -F "file=@famosos.txt" \\
   -F 'rules={"trim":true,"titleCase":true,"removeAccents":true,"deduplicate":true}'`}
           />
@@ -472,7 +490,7 @@ export default function ApiDocsPage() {
           </div>
           <CodeBlock
             language="bash"
-            code={`curl -X POST https://sistema.franciscodev.cl/api/lugares/process \\
+            code={`curl -X POST ${origin}/api/lugares/process \\
   -F "file=@lugares.csv" \\
   -F 'rules={"trim":true,"titleCase":true,"removeAccents":true,"deduplicate":true}'`}
           />
@@ -497,7 +515,7 @@ export default function ApiDocsPage() {
           </div>
           <CodeBlock
             language="bash"
-            code="curl https://sistema.franciscodev.cl/api/analytics"
+            code={`curl ${origin}/api/analytics`}
           />
         </section>
 

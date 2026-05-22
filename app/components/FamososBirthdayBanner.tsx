@@ -13,6 +13,7 @@
  * que centraliza el único fetch a /api/famosos/batch. Ya no se hace fetch aquí.
  */
 
+import { useMemo } from 'react'
 import { Cake, CalendarDays } from 'lucide-react'
 import { esCumpleanosHoy, diasHastaProximoCumpleanos } from '../lib/date-parser'
 
@@ -71,13 +72,15 @@ function formatDiaMes(mes: number, dia: number): string {
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function FamososBirthdayBanner({ famosos }: FamososBirthdayBannerProps) {
+  // B-02: useMemo antes del early return para respetar las Rules of Hooks.
+  // Cuando famosos es null se pasa un array vacío como fallback seguro.
+  const cumpleHoy: FamosoRaw[] = useMemo(
+    () => (famosos ?? []).filter((f) => f.fechaNormalizada && esCumpleanosHoy(f.fechaNormalizada)),
+    [famosos],
+  )
+
   // Mientras los datos no estén disponibles, no renderizar nada
   if (famosos === null) return null
-
-  // ── Cumpleaños HOY ──────────────────────────────────────────────────────────
-  const cumpleHoy: FamosoRaw[] = famosos.filter(
-    (f) => f.fechaNormalizada && esCumpleanosHoy(f.fechaNormalizada),
-  )
 
   if (cumpleHoy.length > 0) {
     return (
@@ -96,7 +99,7 @@ export default function FamososBirthdayBanner({ famosos }: FamososBirthdayBanner
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold uppercase tracking-widest mb-1"
               style={{ color: 'rgba(255,255,255,0.75)' }}>
-              Cumpleanos hoy
+              Cumpleaños hoy
             </p>
             <p className="text-white font-bold text-lg leading-tight">
               {cumpleHoy.map((f) => f.nombre).join(' · ')}
@@ -128,18 +131,22 @@ export default function FamososBirthdayBanner({ famosos }: FamososBirthdayBanner
   }
 
   // ── Próximo cumpleaños ──────────────────────────────────────────────────────
-  let minDias = Infinity
-  let proximo: ProximoCumple | null = null
-  for (const f of famosos) {
-    if (!f.fechaNormalizada) continue
-    const md = parseMesDia(f.fechaNormalizada)
-    if (!md) continue
-    const dias = diasHastaProximoCumpleanos(md.mes, md.dia)
-    if (dias < minDias) {
-      minDias = dias
-      proximo = { famoso: f, dias, mes: md.mes, dia: md.dia }
+  // B-02: useMemo para no recorrer el array completo en cada render
+  const proximo: ProximoCumple | null = useMemo(() => {
+    let minDias = Infinity
+    let resultado: ProximoCumple | null = null
+    for (const f of famosos) {
+      if (!f.fechaNormalizada) continue
+      const md = parseMesDia(f.fechaNormalizada)
+      if (!md) continue
+      const dias = diasHastaProximoCumpleanos(md.mes, md.dia)
+      if (dias < minDias) {
+        minDias = dias
+        resultado = { famoso: f, dias, mes: md.mes, dia: md.dia }
+      }
     }
-  }
+    return resultado
+  }, [famosos])
 
   if (proximo) {
     return (
@@ -149,7 +156,7 @@ export default function FamososBirthdayBanner({ famosos }: FamososBirthdayBanner
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-purple-500 dark:text-purple-400">
-            Proximo cumpleanos
+            Próximo cumpleaños
           </p>
           <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">
             {proximo.famoso.nombre}
@@ -168,7 +175,7 @@ export default function FamososBirthdayBanner({ famosos }: FamososBirthdayBanner
             {proximo.dias}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">
-            {proximo.dias === 1 ? 'dia' : 'dias'}
+            {proximo.dias === 1 ? 'día' : 'días'}
           </p>
         </div>
       </div>

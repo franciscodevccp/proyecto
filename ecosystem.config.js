@@ -3,7 +3,7 @@ module.exports = {
     name: 'comunas-norm',
     script: 'pnpm',
     args: 'start',
-    cwd: '/var/www/comunas-norm',
+    cwd: __dirname,
     env: {
       NODE_ENV: 'production',
       PORT: 3001,

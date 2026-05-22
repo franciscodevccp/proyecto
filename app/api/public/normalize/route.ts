@@ -28,6 +28,37 @@ import { resolveRuleSet } from '../../../lib/etl-rules'
 /** Límite de registros por llamada para evitar abusos */
 const MAX_RECORDS = 10_000
 
+// ─── Rate limiting en memoria (ventana deslizante) ────────────────────────────
+
+/** Máximo de peticiones permitidas por IP en la ventana de tiempo */
+const RATE_LIMIT_MAX = 10
+/** Duración de la ventana de tiempo en milisegundos */
+const RATE_LIMIT_WINDOW_MS = 60_000
+/** Mapa IP → lista de timestamps dentro de la ventana activa */
+const rateLimitMap = new Map<string, number[]>()
+
+/**
+ * Comprueba si la IP indicada puede realizar una petición.
+ * Implementa ventana deslizante: solo se cuentan las peticiones
+ * realizadas dentro del último minuto.
+ *
+ * @returns true si la petición está permitida, false si se superó el límite
+ */
+function checkRateLimit(ip: string): boolean {
+  const ahora = Date.now()
+  const ventanaInicio = ahora - RATE_LIMIT_WINDOW_MS
+  const previos = (rateLimitMap.get(ip) ?? []).filter((t) => t > ventanaInicio)
+
+  if (previos.length >= RATE_LIMIT_MAX) {
+    rateLimitMap.set(ip, previos)
+    return false
+  }
+
+  previos.push(ahora)
+  rateLimitMap.set(ip, previos)
+  return true
+}
+
 /**
  * Headers CORS necesarios en todas las respuestas del endpoint público.
  * El preflight OPTIONS los devuelve, pero el POST también debe incluirlos
@@ -48,6 +79,14 @@ function corsJson(body: unknown, status = 200): NextResponse {
 }
 
 export async function POST(req: NextRequest) {
+  // Verificar rate limit antes de cualquier procesamiento
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
+    ?? req.headers.get('x-real-ip')
+    ?? 'unknown'
+  if (!checkRateLimit(ip)) {
+    return corsJson({ error: 'Demasiadas peticiones. Espera 60 segundos e intenta de nuevo.' }, 429)
+  }
+
   try {
     const body = await req.json()
 
@@ -58,6 +97,15 @@ export async function POST(req: NextRequest) {
 
     if (body.data.length > MAX_RECORDS) {
       return corsJson({ error: `Maximo ${MAX_RECORDS} registros por llamada` }, 400)
+    }
+
+    // A-01: Validar que cada elemento del array sea un string (no number, null, object…)
+    const indexNoString = (body.data as unknown[]).findIndex((item) => typeof item !== 'string')
+    if (indexNoString !== -1) {
+      return corsJson(
+        { error: `El elemento en el índice ${indexNoString} no es un string` },
+        400,
+      )
     }
 
     // Resolver reglas ETL (parciales o todas por defecto)

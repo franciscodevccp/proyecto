@@ -47,7 +47,9 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
       return
     }
 
-    fetch('/api/batches')
+    // M-21: AbortController para cancelar la petición si el componente se desmonta
+    const ctrl = new AbortController()
+    fetch('/api/batches', { signal: ctrl.signal })
       .then((r) => r.json())
       .then((d) => {
         const batches: BatchTrend[] = d.batches ?? []
@@ -56,6 +58,7 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
         setHistory(batches)
       })
       .catch(() => {})
+    return () => ctrl.abort()
   }, [data.batchId])
 
   // ── 1. Donut chart ────────────────────────────────────────────────
@@ -109,9 +112,9 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
                 label={false}
                 labelLine={false}
               >
-                {pieData.map((entry, i) => (
+                {pieData.map((entry) => (
                   <Cell
-                    key={i}
+                    key={entry.name}
                     fill={PIE_COLORS[entry.name as keyof typeof PIE_COLORS] ?? '#6b7280'}
                   />
                 ))}

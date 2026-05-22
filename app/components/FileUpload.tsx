@@ -101,7 +101,7 @@ export default function FileUpload({ onResult, onWrongModule }: FileUploadProps)
 
     const result = parseContent(text, { columnIndex: 0 })
     setParsed(result)
-  }, [])
+  }, [onWrongModule])
 
   /** Envia el archivo al servidor con todos los parametros configurados */
   async function handleSubmit() {

@@ -150,24 +150,21 @@ async function reporteFamosos(batchId: string): Promise<NextResponse> {
 // ─── Módulo Comunas ───────────────────────────────────────────────────────────
 
 async function reporteComunas(batchId: string): Promise<NextResponse> {
-  const batch = await prisma.batch.findUnique({
-    where: { id: batchId },
-    include: {
-      logs: {
-        select: { changeType: true },
-        take: 2000,
-      },
-    },
-  })
+  // A-04: se eliminó el take:2000 en logs — se usa groupBy para contar por tipo
+  // sin cargar todos los logs en memoria (evita conteos incorrectos en batches grandes).
+  const [batch, cambiosAgg] = await Promise.all([
+    prisma.batch.findUnique({ where: { id: batchId } }),
+    prisma.logEntry.groupBy({
+      by: ['changeType'],
+      where: { batchId },
+      _count: { _all: true },
+    }),
+  ])
   if (!batch) return NextResponse.json({ error: 'Batch no encontrado' }, { status: 404 })
 
-  // Conteo por tipo de cambio
-  const tipoMap = new Map<string, number>()
-  for (const log of batch.logs) {
-    tipoMap.set(log.changeType, (tipoMap.get(log.changeType) ?? 0) + 1)
-  }
-  const cambios = Array.from(tipoMap.entries())
-    .map(([tipo, count]) => ({ tipo, count }))
+  // Mapear el resultado de groupBy al formato esperado por la respuesta
+  const cambios = cambiosAgg
+    .map((g) => ({ tipo: g.changeType, count: g._count._all }))
     .sort((a, b) => b.count - a.count)
 
   const pctDups = batch.totalInput > 0
@@ -197,42 +194,60 @@ async function reporteComunas(batchId: string): Promise<NextResponse> {
 // ─── Módulo Lugares ───────────────────────────────────────────────────────────
 
 async function reporteLugares(batchId: string): Promise<NextResponse> {
-  const batch = await prisma.lugarBatch.findUnique({
-    where: { id: batchId },
-    include: {
-      lugares: {
-        include: { georef: true, direccion: true },
-      },
-    },
-  })
+  // A-03: se reemplazó el include masivo (load de todos los lugares + relaciones)
+  // por consultas de agregación independientes. Esto evita cargar miles de registros
+  // en memoria y reduce drásticamente el uso de RAM para batches grandes.
+  const [
+    batch,
+    conGeoref,
+    conDireccion,
+    paisGroups,
+    ciudadGroups,
+    georefs,
+  ] = await Promise.all([
+    prisma.lugarBatch.findUnique({ where: { id: batchId } }),
+    // Conteo de lugares con georeferencia
+    prisma.georeferencia.count({ where: { lugar: { batchId } } }),
+    // Conteo de lugares con dirección estructurada
+    prisma.direccion.count({ where: { lugar: { batchId } } }),
+    // Agrupación por país (sin cargar todos los registros)
+    prisma.direccion.groupBy({
+      by: ['pais'],
+      where: { lugar: { batchId }, pais: { not: null } },
+      _count: { _all: true },
+    }),
+    // Agrupación por ciudad/estado
+    prisma.direccion.groupBy({
+      by: ['ciudadEstadoProvincia'],
+      where: { lugar: { batchId }, ciudadEstadoProvincia: { not: null } },
+      _count: { _all: true },
+    }),
+    // Solo lat/lon para calcular el bounding box (sin cargar el resto del modelo)
+    prisma.georeferencia.findMany({
+      where: { lugar: { batchId } },
+      select: { latitud: true, longitud: true },
+    }),
+  ])
   if (!batch) return NextResponse.json({ error: 'Batch no encontrado' }, { status: 404 })
 
-  const lugares = batch.lugares
+  const sinGeoref = batch.totalOutput - conGeoref
 
-  const conGeoref   = lugares.filter((l) => l.georef !== null).length
-  const sinGeoref   = lugares.filter((l) => l.georef === null).length
-  const conDireccion = lugares.filter((l) => l.direccion !== null).length
+  // Construir listas de países y ciudades ordenadas por frecuencia
+  const paises = paisGroups
+    .filter((g) => g.pais !== null)
+    .map((g) => ({ pais: g.pais as string, count: g._count._all }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8)
 
-  // Países y ciudades
-  const paisMap    = new Map<string, number>()
-  const ciudadMap  = new Map<string, number>()
-  for (const l of lugares) {
-    if (l.direccion?.pais) {
-      paisMap.set(l.direccion.pais, (paisMap.get(l.direccion.pais) ?? 0) + 1)
-    }
-    if (l.direccion?.ciudadEstadoProvincia) {
-      ciudadMap.set(l.direccion.ciudadEstadoProvincia, (ciudadMap.get(l.direccion.ciudadEstadoProvincia) ?? 0) + 1)
-    }
-  }
+  const ciudades = ciudadGroups
+    .filter((g) => g.ciudadEstadoProvincia !== null)
+    .map((g) => ({ ciudad: g.ciudadEstadoProvincia as string, count: g._count._all }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6)
 
-  const paises  = Array.from(paisMap.entries()).map(([pais, count]) => ({ pais, count }))
-    .sort((a, b) => b.count - a.count).slice(0, 8)
-  const ciudades = Array.from(ciudadMap.entries()).map(([ciudad, count]) => ({ ciudad, count }))
-    .sort((a, b) => b.count - a.count).slice(0, 6)
-
-  // Rango de coordenadas
-  const lats = lugares.flatMap((l) => l.georef ? [l.georef.latitud] : [])
-  const lons = lugares.flatMap((l) => l.georef ? [l.georef.longitud] : [])
+  // Rango de coordenadas calculado en JS sobre solo los valores escalares
+  const lats = georefs.map((g) => g.latitud)
+  const lons = georefs.map((g) => g.longitud)
 
   const pctGeoref = batch.totalOutput > 0
     ? Math.round((conGeoref / batch.totalOutput) * 100)
@@ -257,7 +272,8 @@ async function reporteLugares(batchId: string): Promise<NextResponse> {
     ciudades,
     boundsLat: lats.length > 0 ? [Math.min(...lats), Math.max(...lats)] : null,
     boundsLon: lons.length > 0 ? [Math.min(...lons), Math.max(...lons)] : null,
-    totalPaises: paisMap.size,
+    // El total de países distintos se obtiene directamente del groupBy
+    totalPaises: paisGroups.filter((g) => g.pais !== null).length,
   })
 }
 
@@ -271,9 +287,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'batchId y modulo son requeridos' }, { status: 400 })
   }
 
-  if (modulo === 'famosos') return reporteFamosos(batchId)
-  if (modulo === 'comunas') return reporteComunas(batchId)
-  if (modulo === 'lugares') return reporteLugares(batchId)
+  // M-22: cada sub-función lanza si Prisma falla → capturar aquí para devolver 500 limpio
+  try {
+    if (modulo === 'famosos') return await reporteFamosos(batchId)
+    if (modulo === 'comunas') return await reporteComunas(batchId)
+    if (modulo === 'lugares') return await reporteLugares(batchId)
+  } catch (error) {
+    console.error('[reporte]', error)
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
+  }
 
   return NextResponse.json({ error: 'Módulo no válido' }, { status: 400 })
 }

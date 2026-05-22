@@ -19,6 +19,9 @@ model Batch {
   qualityAfter  Float?     // Score de calidad del dataset despues de normalizar (0-100)
   comunas       Comuna[]
   logs          LogEntry[]
+
+  // A-06: índice para ordenar y filtrar por fecha de creación en analytics y historial
+  @@index([createdAt])
 }
 
 model Comuna {
@@ -40,6 +43,9 @@ model LogEntry {
   changeType String
   detail     String?
   createdAt  DateTime @default(now())
+
+  // A-06: índice para filtrar logs por batch (consultas en DataTable y LogViewer)
+  @@index([batchId])
 }
 
 // ── Módulo Famosos ──────────────────────────────────────────────────────────
@@ -55,6 +61,9 @@ model FamosoBatch {
   duplicates  Int      // Cantidad de duplicados eliminados
   cumpleanos  Int      // Cuántos famosos cumplen años hoy
   famosos     Famoso[]
+
+  // A-06: índice para ordenar por fecha en analytics e historial de famosos
+  @@index([createdAt])
 }
 
 /// Un personaje famoso procesado y normalizado.
@@ -85,6 +94,9 @@ model LugarBatch {
   totalOutput Int      // Lugares únicos guardados tras deduplicar
   duplicates  Int      // Duplicados eliminados (mismo nombre + misma georef)
   lugares     Lugar[]
+
+  // A-06: índice para ordenar por fecha en analytics e historial de lugares
+  @@index([createdAt])
 }
 
 /// Un lugar turístico único con sus datos relacionados.

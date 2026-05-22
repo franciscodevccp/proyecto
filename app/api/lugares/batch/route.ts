@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../../lib/prisma'
+import { Prisma } from '../../../generated/prisma/client'
 
 /**
  * GET /api/lugares/batch
@@ -43,25 +44,29 @@ export async function GET(req: NextRequest) {
   }
 
   // Listar batches paginados
-  const page = parseInt(req.nextUrl.searchParams.get('page') ?? '1', 10)
-  const limit = parseInt(req.nextUrl.searchParams.get('limit') ?? '20', 10)
+  const page  = Math.max(1, parseInt(req.nextUrl.searchParams.get('page')  ?? '1',  10))
+  const limit = Math.min(100, Math.max(1, parseInt(req.nextUrl.searchParams.get('limit') ?? '20', 10)))
 
   try {
-    const batches = await prisma.lugarBatch.findMany({
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-      select: {
-        id: true,
-        fileName: true,
-        createdAt: true,
-        totalInput: true,
-        totalOutput: true,
-        duplicates: true,
-      },
-    })
+    // M-08: incluir total y totalPages para que los consumidores puedan paginar
+    const [batches, total] = await Promise.all([
+      prisma.lugarBatch.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          fileName: true,
+          createdAt: true,
+          totalInput: true,
+          totalOutput: true,
+          duplicates: true,
+        },
+      }),
+      prisma.lugarBatch.count(),
+    ])
 
-    return NextResponse.json({ batches })
+    return NextResponse.json({ batches, total, page, totalPages: Math.ceil(total / limit) })
   } catch (error) {
     console.error('[lugares/batch GET list]', error)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })
@@ -83,6 +88,13 @@ export async function DELETE(req: NextRequest) {
     await prisma.lugarBatch.delete({ where: { id } })
     return NextResponse.json({ ok: true })
   } catch (error) {
+    // M-04: capturar P2025 para devolver 404 cuando el batch no existe
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      return NextResponse.json({ error: 'Batch no encontrado' }, { status: 404 })
+    }
     console.error('[lugares/batch DELETE]', error)
     return NextResponse.json({ error: 'Error al eliminar el batch' }, { status: 500 })
   }
