@@ -65,10 +65,14 @@ async function fetchSummary(
   const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(titulo)}`
   try {
     const res = await fetch(url, { headers: WIKI_HEADERS, signal })
+    console.log(`[wiki] ${titulo} → HTTP ${res.status}`)
     if (!res.ok) return { raw: {}, status: res.status }
     const raw = (await res.json()) as WikiRawResponse
+    console.log(`[wiki] ${titulo} → type=${raw.type ?? 'standard'} thumb=${!!raw.thumbnail?.source}`)
     return { raw, status: res.status }
-  } catch {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[wiki] ${titulo} → ERROR: ${msg}`)
     return null
   }
 }
