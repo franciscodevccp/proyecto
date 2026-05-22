@@ -13,6 +13,8 @@
  * Ejemplo: Apple Park aparece 2 veces con coords distintas → AMBOS son válidos.
  */
 
+import { normalizeForKey } from './normalizer'
+
 /** Dirección postal parseada en componentes estructurados */
 export interface DireccionParsed {
   nombreCalle: string | null
@@ -240,12 +242,8 @@ export function procesarLugares(content: string): LugaresResult {
     const georef = parsearGeoref(rawGeoref)
     const direccion = parsearDireccion(rawDireccion)
 
-    // Normalizar nombre para comparación (sin tildes, minúsculas)
-    const keyNombre = nombre
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .trim()
+    // Normalizar nombre para comparación usando la utilidad centralizada
+    const keyNombre = normalizeForKey(nombre)
 
     // Redondear coords a 3 decimales para detectar duplicados exactos
     const keyGeo = georef

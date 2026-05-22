@@ -1,4 +1,4 @@
-/**
+﻿/**
  * famosos-parser.ts
  * Parsea el archivo de famosos línea por línea.
  *
@@ -13,6 +13,7 @@
  */
 
 import { parseDate, calcularEdad, esCumpleanos } from './date-parser'
+import { normalizeForKey } from './normalizer'
 
 /** Datos de un famoso ya procesado y normalizado */
 export interface FamosoRecord {
@@ -34,21 +35,6 @@ export interface FamososResult {
   duplicateCount: number           // Cantidad de duplicados eliminados
   cumpleanosCount: number          // Cuántos cumplen años hoy
   logs: string[]                   // Registro detallado de cada decisión
-}
-
-/**
- * Normaliza un nombre para comparación:
- * elimina tildes, convierte a minúsculas y colapsa espacios.
- * Usa escapes Unicode explícitos para el rango de diacríticos (U+0300–U+036F)
- * y evitar problemas de encoding en el archivo fuente.
- */
-function normalizarNombre(nombre: string): string {
-  return nombre
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')  // Eliminar diacríticos
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
 }
 
 /**
@@ -140,7 +126,7 @@ export function procesarFamosos(content: string): FamososResult {
       lineNumber,
     }
 
-    const key = normalizarNombre(nombre)
+    const key = normalizeForKey(nombre)
 
     // Detectar duplicado por nombre normalizado
     if (seen.has(key)) {

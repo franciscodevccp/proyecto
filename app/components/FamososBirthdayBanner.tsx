@@ -8,23 +8,25 @@
  * fechaNormalizada tiene formato DD-MM-YYYY (estándar del date-parser).
  * El cálculo es siempre client-side para que sea preciso aunque el batch
  * haya sido procesado en un día distinto.
+ *
+ * OPTIMIZACIÓN (Item 5): los datos llegan como prop desde famosos/page.tsx,
+ * que centraliza el único fetch a /api/famosos/batch. Ya no se hace fetch aquí.
  */
 
-import { useEffect, useState } from 'react'
 import { Cake, CalendarDays } from 'lucide-react'
 import { esCumpleanosHoy, diasHastaProximoCumpleanos } from '../lib/date-parser'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-interface FamosoRaw {
+/** Estructura mínima de un famoso que este banner necesita */
+export interface FamosoRaw {
   id: string
   nombre: string
   fechaOriginal: string
   fechaNormalizada: string | null
-}
-
-interface BatchAPIResponse {
-  batch: { famosos: FamosoRaw[] }
+  fechaAprox: string | null
+  edad: number | null
+  esCumpleanos: boolean
 }
 
 interface ProximoCumple {
@@ -35,7 +37,11 @@ interface ProximoCumple {
 }
 
 interface FamososBirthdayBannerProps {
-  batchId: string
+  /**
+   * Lista de famosos del batch activo.
+   * null indica que los datos aún se están cargando → el banner no renderiza nada.
+   */
+  famosos: FamosoRaw[] | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -64,51 +70,15 @@ function formatDiaMes(mes: number, dia: number): string {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export default function FamososBirthdayBanner({ batchId }: FamososBirthdayBannerProps) {
-  const [cumpleHoy, setCumpleHoy] = useState<FamosoRaw[]>([])
-  const [proximo, setProximo] = useState<ProximoCumple | null>(null)
-  const [cargado, setCargado] = useState(false)
+export default function FamososBirthdayBanner({ famosos }: FamososBirthdayBannerProps) {
+  // Mientras los datos no estén disponibles, no renderizar nada
+  if (famosos === null) return null
 
-  useEffect(() => {
-    fetch(`/api/famosos/batch?id=${batchId}`)
-      .then((r) => r.json())
-      .then((d: BatchAPIResponse) => {
-        const famosos: FamosoRaw[] = d.batch?.famosos ?? []
+  // ── Cumpleaños HOY ──────────────────────────────────────────────────────────
+  const cumpleHoy: FamosoRaw[] = famosos.filter(
+    (f) => f.fechaNormalizada && esCumpleanosHoy(f.fechaNormalizada),
+  )
 
-        // ── Cumpleaños HOY ──────────────────────────────────────────────────
-        const hoy: FamosoRaw[] = []
-        for (const f of famosos) {
-          if (!f.fechaNormalizada) continue
-          if (esCumpleanosHoy(f.fechaNormalizada)) hoy.push(f)
-        }
-        if (hoy.length > 0) {
-          setCumpleHoy(hoy)
-          setCargado(true)
-          return
-        }
-
-        // ── Próximo cumpleaños ──────────────────────────────────────────────
-        let minDias = Infinity
-        let candidato: ProximoCumple | null = null
-        for (const f of famosos) {
-          if (!f.fechaNormalizada) continue
-          const md = parseMesDia(f.fechaNormalizada)
-          if (!md) continue
-          const dias = diasHastaProximoCumpleanos(md.mes, md.dia)
-          if (dias < minDias) {
-            minDias = dias
-            candidato = { famoso: f, dias, mes: md.mes, dia: md.dia }
-          }
-        }
-        setProximo(candidato)
-        setCargado(true)
-      })
-      .catch(() => setCargado(true))
-  }, [batchId])
-
-  if (!cargado) return null
-
-  // ── Cumpleaños HOY ────────────────────────────────────────────────────────
   if (cumpleHoy.length > 0) {
     return (
       <div
@@ -157,7 +127,20 @@ export default function FamososBirthdayBanner({ batchId }: FamososBirthdayBanner
     )
   }
 
-  // ── Próximo cumpleaños ────────────────────────────────────────────────────
+  // ── Próximo cumpleaños ──────────────────────────────────────────────────────
+  let minDias = Infinity
+  let proximo: ProximoCumple | null = null
+  for (const f of famosos) {
+    if (!f.fechaNormalizada) continue
+    const md = parseMesDia(f.fechaNormalizada)
+    if (!md) continue
+    const dias = diasHastaProximoCumpleanos(md.mes, md.dia)
+    if (dias < minDias) {
+      minDias = dias
+      proximo = { famoso: f, dias, mes: md.mes, dia: md.dia }
+    }
+  }
+
   if (proximo) {
     return (
       <div className="flex items-center gap-4 rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 px-5 py-4">

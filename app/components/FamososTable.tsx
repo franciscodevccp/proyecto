@@ -4,6 +4,12 @@
  * FamososTable.tsx
  * Tabla paginada de famosos con búsqueda, filtro de cumpleaños
  * y modal de exportación (CSV / JSON / TXT con toggle A→Z).
+ *
+ * OPTIMIZACIÓN (Item 5): acepta un prop opcional `famosos`.
+ * - Si se pasa y es null  → muestra estado de carga (el padre aún está fetching).
+ * - Si se pasa y es array → usa los datos directamente sin fetch propio.
+ * - Si no se pasa (undefined) → mantiene el fetch interno como fallback para
+ *   uso standalone del componente.
  */
 
 import { useState, useEffect } from 'react'
@@ -20,28 +26,26 @@ import {
   Check,
 } from 'lucide-react'
 import FamososSqlExport from './FamososSqlExport'
-
-/** Estructura de un famoso recibido de la API */
-interface Famoso {
-  id: string
-  nombre: string
-  fechaOriginal: string
-  fechaNormalizada: string | null
-  fechaAprox: string | null
-  edad: number | null
-  esCumpleanos: boolean
-}
+import type { FamosoRaw } from './FamososBirthdayBanner'
 
 interface FamososTableProps {
   batchId: string
+  /**
+   * Datos del batch ya cargados por el padre.
+   * null  → el padre está cargando (muestra estado de carga).
+   * array → usar directamente sin fetch propio.
+   * omitido / undefined → hacer fetch interno (modo standalone).
+   */
+  famosos?: FamosoRaw[] | null
 }
 
 const PAGE_SIZE = 20
 
-export default function FamososTable({ batchId }: FamososTableProps) {
-  const [famosos, setFamosos] = useState<Famoso[]>([])
+export default function FamososTable({ batchId, famosos: famososProp }: FamososTableProps) {
+  // Estado interno usado solo cuando famososProp es undefined (modo standalone).
+  const [famososLocales, setFamososLocales] = useState<FamosoRaw[]>([])
+  const [cargandoInterno, setCargandoInterno] = useState(famososProp === undefined)
   const [page, setPage] = useState(1)
-  const [cargando, setCargando] = useState(true)
 
   // Filtros activos
   const [busqueda, setBusqueda] = useState('')
@@ -52,14 +56,24 @@ export default function FamososTable({ batchId }: FamososTableProps) {
   const [ordenado, setOrdenado] = useState(false)
   const [descargando, setDescargando] = useState<string | null>(null)
 
-  // Cargar famosos del batch al montar o cambiar batchId
+  // Fetch interno — solo cuando el padre no pasa datos (famososProp === undefined).
   useEffect(() => {
-    setCargando(true)
+    if (famososProp !== undefined) return
+    setCargandoInterno(true)
     fetch(`/api/famosos/batch?id=${batchId}`)
       .then((r) => r.json())
-      .then((d) => setFamosos(d.batch?.famosos ?? []))
-      .finally(() => setCargando(false))
-  }, [batchId])
+      .then((d) => setFamososLocales(d.batch?.famosos ?? []))
+      .catch(() => setFamososLocales([]))
+      .finally(() => setCargandoInterno(false))
+  }, [batchId, famososProp])
+
+  // Datos efectivos: prop si está disponible, locales en caso contrario.
+  const famosos: FamosoRaw[] = famososProp !== undefined && famososProp !== null
+    ? famososProp
+    : famososLocales
+
+  // Determinar si está cargando (prop null = padre cargando, o fetch interno activo).
+  const cargando = famososProp === null || cargandoInterno
 
   // Volver a página 1 cuando cambian los filtros
   useEffect(() => { setPage(1) }, [busqueda, soloCumpleanos])

@@ -22,6 +22,7 @@ export async function GET() {
     ] = await Promise.all([
       prisma.batch.findMany({
         orderBy: { createdAt: 'asc' },
+        take: 1000, // tope de seguridad — usar /api/batches con paginación para el historial completo
         select: {
           id: true,
           fileName: true,
@@ -36,6 +37,7 @@ export async function GET() {
       }),
       prisma.famosoBatch.findMany({
         orderBy: { createdAt: 'asc' },
+        take: 1000, // tope de seguridad — usar /api/batches con paginación para el historial completo
         select: {
           id: true,
           fileName: true,
@@ -47,6 +49,7 @@ export async function GET() {
       }),
       prisma.lugarBatch.findMany({
         orderBy: { createdAt: 'asc' },
+        take: 1000, // tope de seguridad — usar /api/batches con paginación para el historial completo
         select: {
           id: true,
           fileName: true,
@@ -105,7 +108,17 @@ export async function GET() {
       avgCalidad,
     }
 
-    return NextResponse.json({ totals, batches })
+    return NextResponse.json({
+      totals,   // mantener compatibilidad con consumidores existentes (nombre legado)
+      batches,
+      kpis: {   // forma documentada en la API — alias de totals con campos renombrados
+        totalBatches:    batches.length,
+        totalInput,
+        totalOutput,
+        totalDuplicates: totalDups,
+        avgQuality:      avgCalidad,
+      },
+    })
   } catch (error) {
     console.error('[analytics]', error)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })

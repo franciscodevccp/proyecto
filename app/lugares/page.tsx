@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import dynamic from 'next/dynamic'
+import { useSearchParams } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { Toaster, toast } from 'react-hot-toast'
 import {
@@ -22,6 +23,7 @@ import ErrorBoundary from '../components/ErrorBoundary'
 import RulesConfig from '../components/RulesConfig'
 import { useDarkMode } from '../hooks/useDarkMode'
 import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
+import { APP_VERSION } from '../lib/version'
 
 /**
  * Importacion dinamica del mapa Leaflet con SSR desactivado.
@@ -48,13 +50,15 @@ export default function PaginaLugares() {
   const [tab, setTab] = useState<Tab>('datos')
   const [rules, setRules] = useState<ETLRuleSet>(DEFAULT_RULESET)
 
+  // useSearchParams detecta cambios en la URL sin necesidad de recargar la página
+  const searchParams = useSearchParams()
+
   /**
    * Si la URL trae ?batch=ID (viene desde analytics/historial),
    * carga ese batch automáticamente sin necesidad de subir archivo.
    */
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const batchId = params.get('batch')
+    const batchId = searchParams.get('batch')
     if (!batchId) return
 
     fetch(`/api/lugares/batch?id=${batchId}`)
@@ -73,7 +77,7 @@ export default function PaginaLugares() {
         setTab('datos')
       })
       .catch(() => {/* silencioso */})
-  }, [])
+  }, [searchParams])
 
   /**
    * Procesa el archivo con el endpoint de lugares.
@@ -337,7 +341,7 @@ export default function PaginaLugares() {
       <footer className="border-t border-gray-200 dark:border-gray-800 mt-8 py-4">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between text-xs text-gray-400 dark:text-gray-600">
           <span>COMUNAS_NORM — Módulo Lugares Turísticos</span>
-          <span>v0.1.0</span>
+          <span>{APP_VERSION}</span>
         </div>
       </footer>
     </div>

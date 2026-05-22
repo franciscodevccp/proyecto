@@ -1,4 +1,4 @@
-/**
+﻿/**
  * normalizer.ts
  * Pipeline de normalizacion de texto para datasets de comunas (y texto en general).
  * Recibe lineas ya parseadas y aplica las reglas ETL configuradas por el usuario.
@@ -31,6 +31,23 @@ export interface ProcessResult {
   qualityBefore: QualityBreakdown
   /** Score de calidad del dataset DESPUES de normalizar */
   qualityAfter: QualityBreakdown
+}
+
+/**
+ * Normaliza una cadena para comparaciones de deduplicación:
+ * elimina diacríticos, convierte a minúsculas y colapsa espacios.
+ * NO usar para display — solo para keys de igualdad.
+ *
+ * Exportada para que famosos-parser.ts, lugares-parser.ts y el propio
+ * processFile() usen la misma lógica sin duplicarla.
+ */
+export function normalizeForKey(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /**
@@ -143,8 +160,8 @@ export function processFile(
       return // descartar linea
     }
 
-    // Clave para comparacion de duplicados: minusculas sin tildes
-    const key = normalized.toLowerCase()
+    // Clave para comparacion de duplicados: NFD + sin diacriticos + minusculas
+    const key = normalizeForKey(normalized)
 
     // Regla: deduplicar
     if (baseRules['deduplicate'] && seen.has(key)) {

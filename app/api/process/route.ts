@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '../../lib/prisma'
 import { processFile } from '../../lib/normalizer'
 import { parseContent } from '../../lib/parser'
-import { resolveRuleSet } from '../../lib/etl-rules'
+import { resolveRuleSet, type ETLRuleSet } from '../../lib/etl-rules'
 
 /**
  * POST /api/process
@@ -28,10 +28,14 @@ export async function POST(req: NextRequest) {
     const columnIndex = parseInt(form.get('columnIndex') as string ?? '0', 10) || 0
 
     // Parsear reglas ETL opcionales enviadas como JSON
-    let partialRules = {}
+    let partialRules: Partial<ETLRuleSet> = {}
     const rulesRaw = form.get('rules') as string | null
     if (rulesRaw) {
-      try { partialRules = JSON.parse(rulesRaw) } catch { /* usar defaults */ }
+      try {
+        partialRules = JSON.parse(rulesRaw)
+      } catch (e) {
+        console.warn('[process] JSON de reglas inválido, usando defaults:', e)
+      }
     }
 
     if (!file) {

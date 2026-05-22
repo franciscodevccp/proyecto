@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Toaster, toast } from 'react-hot-toast'
 import { useDarkMode } from '../hooks/useDarkMode'
+import { APP_VERSION } from '../lib/version'
 import {
   Database, TrendingUp, Download, Users, MapPin,
   Sun, Moon, ChevronDown, Loader2, ArrowLeft,
@@ -713,7 +714,7 @@ export default function ReportePage() {
         pdf.setFontSize(8)
         pdf.setFont('helvetica', 'normal')
         pdf.setTextColor(180, 180, 180)
-        pdf.text(`COMUNAS_NORM  ·  Módulo ${MODULO_LABEL[reporte.modulo]}  ·  v0.1.0`, MX, PH - 8)
+        pdf.text(`COMUNAS_NORM  ·  Módulo ${MODULO_LABEL[reporte.modulo]}  ·  ${APP_VERSION}`, MX, PH - 8)
         pdf.text(`Página ${p} de ${total}`, PW - MX, PH - 8, { align: 'right' })
       }
 
@@ -1007,7 +1008,7 @@ export default function ReportePage() {
             {/* Pie del documento */}
             <div className="px-6 sm:px-8 py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50">
               <p className="text-xs text-gray-400 font-mono">
-                COMUNAS_NORM — Módulo {MODULO_LABEL[reporte.modulo]} — v0.1.0
+                COMUNAS_NORM — Módulo {MODULO_LABEL[reporte.modulo]} — {APP_VERSION}
               </p>
             </div>
           </div>

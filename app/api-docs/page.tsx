@@ -186,12 +186,22 @@ const SCHEMA_ANALYTICS_RES = `{
       "qualityBefore": number | null
     }
   ],
+  // "totals" es el nombre legado — se mantiene para compatibilidad
+  "totals": {
+    "totalArchivos": number
+    "totalInput":    number
+    "totalOutput":   number
+    "totalDups":     number
+    "totalChanges":  number
+    "avgCalidad":    number | null
+  },
+  // "kpis" es la forma documentada (alias de totals con campos renombrados)
   "kpis": {
-    "totalBatches":   number
-    "totalInput":     number
-    "totalOutput":    number
+    "totalBatches":    number
+    "totalInput":      number
+    "totalOutput":     number
     "totalDuplicates": number
-    "avgQuality":     number | null
+    "avgQuality":      number | null
   }
 }`
 

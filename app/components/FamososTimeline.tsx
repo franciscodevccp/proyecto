@@ -12,23 +12,16 @@
  *   GET https://en.wikipedia.org/api/rest_v1/page/summary/{nombre}
  *   → description (string corta) + thumbnail.source (URL de foto)
  * Las tarjetas muestran skeleton mientras carga y gradiente de era si no hay foto.
+ *
+ * OPTIMIZACIÓN (Item 5): los datos llegan como prop desde famosos/page.tsx,
+ * que centraliza el único fetch a /api/famosos/batch. Ya no se hace fetch aquí.
  */
 
 import { useEffect, useState, useRef } from 'react'
 import { Clock3, Loader2 } from 'lucide-react'
+import type { FamosoRaw } from './FamososBirthdayBanner'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
-
-interface FamosoRaw {
-  id: string
-  nombre: string
-  fechaOriginal: string
-  fechaNormalizada: string | null
-}
-
-interface BatchAPIResponse {
-  batch: { famosos: FamosoRaw[] }
-}
 
 interface FamosoCronologico {
   id: string
@@ -50,7 +43,11 @@ interface WikiResponse {
 }
 
 interface FamososTimelineProps {
-  batchId: string
+  /**
+   * Lista de famosos del batch activo.
+   * null indica que los datos aún se están cargando → se muestra el skeleton.
+   */
+  famosos: FamosoRaw[] | null
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -112,10 +109,7 @@ function eraGradient(anio: number): string {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export default function FamososTimeline({ batchId }: FamososTimelineProps) {
-  const [items, setItems] = useState<FamosoCronologico[]>([])
-  const [cargando, setCargando] = useState(true)
-
+export default function FamososTimeline({ famosos }: FamososTimelineProps) {
   /**
    * Mapa de enriquecimiento Wikipedia:
    *   undefined → todavía no cargado (skeleton)
@@ -127,74 +121,85 @@ export default function FamososTimeline({ batchId }: FamososTimelineProps) {
   /** Evita que el efecto de Wikipedia se dispare dos veces en Strict Mode */
   const wikiEnCurso = useRef(false)
 
-  // ── Carga del batch ────────────────────────────────────────────────────────
+  // ── Derivar items desde el prop ────────────────────────────────────────────
+  // Si famosos es null (cargando) items es vacío y se muestra el skeleton.
+  // Si cambia el prop (nuevo batch), se resetean el mapa wiki y el flag.
+  const items: FamosoCronologico[] = famosos === null
+    ? []
+    : famosos
+        .filter((f): f is FamosoRaw & { fechaNormalizada: string } =>
+          f.fechaNormalizada !== null && f.fechaNormalizada.length > 0,
+        )
+        .map((f) => ({
+          id: f.id,
+          nombre: f.nombre,
+          fechaOriginal: f.fechaOriginal,
+          fechaNormalizada: f.fechaNormalizada,
+          anio: extractAnio(f.fechaNormalizada),
+        }))
+        .sort((a, b) => a.anio - b.anio)
+        .slice(0, MAX_TIMELINE_ITEMS)
+
+  // Cuando llegan datos nuevos (famosos pasa de null a array) se resetea el
+  // estado de Wikipedia para que el enriquecimiento empiece desde cero.
   useEffect(() => {
-    setCargando(true)
     wikiEnCurso.current = false
     setWiki(new Map())
-
-    fetch(`/api/famosos/batch?id=${batchId}`)
-      .then((r) => r.json())
-      .then((d: BatchAPIResponse) => {
-        const famosos: FamosoRaw[] = d.batch?.famosos ?? []
-
-        const cronologicos: FamosoCronologico[] = famosos
-          .filter((f): f is FamosoRaw & { fechaNormalizada: string } =>
-            f.fechaNormalizada !== null && f.fechaNormalizada.length > 0,
-          )
-          .map((f) => ({
-            id: f.id,
-            nombre: f.nombre,
-            fechaOriginal: f.fechaOriginal,
-            fechaNormalizada: f.fechaNormalizada,
-            anio: extractAnio(f.fechaNormalizada),
-          }))
-          .sort((a, b) => a.anio - b.anio)
-          .slice(0, MAX_TIMELINE_ITEMS)
-
-        setItems(cronologicos)
-      })
-      .catch(() => setItems([]))
-      .finally(() => setCargando(false))
-  }, [batchId])
+  }, [famosos])
 
   // ── Enriquecimiento Wikipedia (lotes de WIKI_LOTE) ────────────────────────
   useEffect(() => {
     if (items.length === 0 || wikiEnCurso.current) return
     wikiEnCurso.current = true
+    // Flag de cancelación: si el componente se desmonta a mitad de las
+    // peticiones, la función async lo detecta y deja de llamar a setWiki,
+    // evitando el memory leak de actualizar estado en un componente desmontado.
+    let cancelled = false
 
     async function cargarWiki() {
       for (let i = 0; i < items.length; i += WIKI_LOTE) {
+        if (cancelled) return
         const lote = items.slice(i, i + WIKI_LOTE)
         await Promise.all(
           lote.map(async (item) => {
+            if (cancelled) return
             try {
               const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.nombre)}`
               const res = await fetch(url)
+              if (cancelled) return
               if (!res.ok) {
-                setWiki((prev) => new Map(prev).set(item.id, null))
+                if (!cancelled) setWiki((prev) => new Map(prev).set(item.id, null))
                 return
               }
               const data = (await res.json()) as WikiResponse
-              setWiki((prev) =>
-                new Map(prev).set(item.id, {
-                  descripcion: data.description ?? null,
-                  foto: data.thumbnail?.source ?? null,
-                }),
-              )
+              if (!cancelled) {
+                setWiki((prev) =>
+                  new Map(prev).set(item.id, {
+                    descripcion: data.description ?? null,
+                    foto: data.thumbnail?.source ?? null,
+                  }),
+                )
+              }
             } catch {
-              setWiki((prev) => new Map(prev).set(item.id, null))
+              if (!cancelled) setWiki((prev) => new Map(prev).set(item.id, null))
             }
           }),
         )
+        // Pausa de 150 ms entre lotes para no saturar la API de Wikipedia
+        if (!cancelled && i + WIKI_LOTE < items.length) {
+          await new Promise((r) => setTimeout(r, 150))
+        }
       }
     }
 
     cargarWiki()
+    return () => {
+      cancelled = true
+    }
   }, [items])
 
   // ── Estado: cargando ───────────────────────────────────────────────────────
-  if (cargando) {
+  if (famosos === null) {
     return (
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 h-24 flex items-center justify-center gap-2">
         <Loader2 className="w-4 h-4 animate-spin text-gray-400" />

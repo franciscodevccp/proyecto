@@ -32,7 +32,11 @@ export async function POST(req: NextRequest) {
     let partialRules: Partial<ETLRuleSet> = {}
     const rulesRaw = form.get('rules') as string | null
     if (rulesRaw) {
-      try { partialRules = JSON.parse(rulesRaw) } catch { /* usar defaults */ }
+      try {
+        partialRules = JSON.parse(rulesRaw)
+      } catch (e) {
+        console.warn('[lugares/process] JSON de reglas inválido, usando defaults:', e)
+      }
     }
     const rules = resolveRuleSet(partialRules)
 

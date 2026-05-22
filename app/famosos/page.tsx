@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { Toaster, toast } from 'react-hot-toast'
 import {
@@ -17,12 +18,13 @@ import Link from 'next/link'
 import FamososStats from '../components/FamososStats'
 import FamososTable from '../components/FamososTable'
 import FamososBatchHistory, { type FamososResponse } from '../components/FamososBatchHistory'
-import FamososBirthdayBanner from '../components/FamososBirthdayBanner'
+import FamososBirthdayBanner, { type FamosoRaw } from '../components/FamososBirthdayBanner'
 import FamososTimeline from '../components/FamososTimeline'
 import ErrorBoundary from '../components/ErrorBoundary'
 import RulesConfig from '../components/RulesConfig'
 import { useDarkMode } from '../hooks/useDarkMode'
 import { DEFAULT_RULESET, type ETLRuleSet } from '../lib/etl-rules'
+import { APP_VERSION } from '../lib/version'
 
 type Tab = 'datos' | 'log' | 'historial'
 
@@ -33,13 +35,23 @@ export default function PaginaFamosos() {
   const [tab, setTab] = useState<Tab>('datos')
   const [rules, setRules] = useState<ETLRuleSet>(DEFAULT_RULESET)
 
+  // useSearchParams detecta cambios en la URL sin necesidad de recargar la página
+  const searchParams = useSearchParams()
+
+  /**
+   * Datos del batch activo compartidos entre los tres componentes hijos
+   * (FamososBirthdayBanner, FamososTimeline y FamososTable) para evitar
+   * que cada uno haga su propio fetch a /api/famosos/batch (Item 5).
+   * null mientras se está cargando; [] si el fetch falló o no hay batch.
+   */
+  const [famososData, setFamososData] = useState<FamosoRaw[] | null>(null)
+
   /**
    * Si la URL trae ?batch=ID (viene desde analytics/historial),
    * carga ese batch automáticamente sin necesidad de subir archivo.
    */
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const batchId = params.get('batch')
+    const batchId = searchParams.get('batch')
     if (!batchId) return
 
     fetch(`/api/famosos/batch?id=${batchId}`)
@@ -59,7 +71,24 @@ export default function PaginaFamosos() {
         setTab('datos')
       })
       .catch(() => {/* silencioso */})
-  }, [])
+  }, [searchParams])
+
+  /**
+   * Fetch centralizado de los famosos del batch activo.
+   * Se dispara reactivamente cuando cambia resultado?.batchId.
+   * Los tres componentes hijos reciben los datos como prop.
+   */
+  useEffect(() => {
+    if (!resultado?.batchId) {
+      setFamososData(null)
+      return
+    }
+    setFamososData(null) // reinicia el estado de carga antes de cada fetch
+    fetch(`/api/famosos/batch?id=${resultado.batchId}`)
+      .then((r) => r.json())
+      .then((d) => setFamososData(d.batch?.famosos ?? []))
+      .catch(() => setFamososData([]))
+  }, [resultado?.batchId])
 
   /**
    * Procesa el archivo .txt con el endpoint de famosos.
@@ -261,11 +290,13 @@ export default function PaginaFamosos() {
             />
 
             {/* Banner animado de cumpleaños (hoy o próximo) */}
-            <FamososBirthdayBanner batchId={resultado.batchId} />
+            <ErrorBoundary label="Banner de cumpleaños">
+              <FamososBirthdayBanner famosos={famososData} />
+            </ErrorBoundary>
 
             {/* Línea de tiempo cronológica */}
             <ErrorBoundary label="Línea de tiempo">
-              <FamososTimeline batchId={resultado.batchId} />
+              <FamososTimeline famosos={famososData} />
             </ErrorBoundary>
 
             {/* Tabs: Datos / Log / Historial */}
@@ -294,7 +325,7 @@ export default function PaginaFamosos() {
               </div>
 
               <div className="p-3 sm:p-6">
-                {tab === 'datos' && <FamososTable batchId={resultado.batchId} />}
+                {tab === 'datos' && <FamososTable batchId={resultado.batchId} famosos={famososData} />}
 
                 {tab === 'log' && (
                   <LogFamosos logs={resultado.logs} />
@@ -324,7 +355,7 @@ export default function PaginaFamosos() {
       <footer className="border-t border-gray-200 dark:border-gray-800 mt-8 py-4">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between text-xs text-gray-400 dark:text-gray-600">
           <span>COMUNAS_NORM — Módulo Famosos</span>
-          <span>v0.1.0</span>
+          <span>{APP_VERSION}</span>
         </div>
       </footer>
     </div>

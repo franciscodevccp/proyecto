@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 
@@ -35,7 +36,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-full flex flex-col bg-gray-50 dark:bg-gray-950 transition-colors">
-        {children}
+        {/*
+         * Suspense requerido para que useSearchParams() funcione correctamente
+         * dentro del árbol de Server Components (Next.js App Router).
+         */}
+        <Suspense fallback={null}>
+          {children}
+        </Suspense>
       </body>
     </html>
   )

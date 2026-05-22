@@ -5,7 +5,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   ResponsiveContainer,
 } from 'recharts'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ProcessResponse } from './FileUpload'
 
 interface ChartsPanelProps {
@@ -19,14 +19,6 @@ interface BatchTrend {
   createdAt: string
 }
 
-/**
- * Caché de nivel módulo para el historial de batches.
- * Evita refetch en cada cambio de batchId: el historial cambia solo cuando
- * se procesa un nuevo batch, lo que fuerza un remount del componente.
- * Se invalida cuando data.batchId no está en la lista (batch nuevo procesado).
- */
-let historyCache: { batches: BatchTrend[]; ids: Set<string> } | null = null
-
 const PIE_COLORS = {
   Normalizados: '#3b82f6',
   Duplicados:   '#f97316',
@@ -35,15 +27,23 @@ const PIE_COLORS = {
 }
 
 export default function ChartsPanel({ data }: ChartsPanelProps) {
+  /**
+   * Caché local al ciclo de vida del componente.
+   * Usar useRef en lugar de una variable de módulo evita que React Fast Refresh
+   * en desarrollo muestre datos obsoletos de una sesión anterior.
+   * Se invalida cuando data.batchId no está en la lista (batch nuevo procesado).
+   */
+  const historyCache = useRef<{ batches: BatchTrend[]; ids: Set<string> } | null>(null)
+
   // Inicializar el estado desde la caché si el batch actual ya está en ella
   const [history, setHistory] = useState<BatchTrend[]>(
-    () => historyCache?.ids.has(data.batchId) ? historyCache.batches : [],
+    () => historyCache.current?.ids.has(data.batchId) ? historyCache.current.batches : [],
   )
 
   useEffect(() => {
     // Si la caché ya contiene el batch actual, no hacer fetch
-    if (historyCache?.ids.has(data.batchId)) {
-      setHistory(historyCache.batches)
+    if (historyCache.current?.ids.has(data.batchId)) {
+      setHistory(historyCache.current.batches)
       return
     }
 
@@ -52,7 +52,7 @@ export default function ChartsPanel({ data }: ChartsPanelProps) {
       .then((d) => {
         const batches: BatchTrend[] = d.batches ?? []
         const ids = new Set(batches.map((b) => b.id))
-        historyCache = { batches, ids }
+        historyCache.current = { batches, ids }
         setHistory(batches)
       })
       .catch(() => {})

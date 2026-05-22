@@ -161,7 +161,8 @@ export async function GET(req: NextRequest) {
       return new NextResponse(sql, {
         headers: {
           'Content-Type': 'text/plain; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${nombreArchivo}"`,
+          // RFC 5987: filename* con codificación UTF-8 para soportar caracteres especiales
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(nombreArchivo)}`,
         },
       })
     }

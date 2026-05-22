@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Toaster, toast } from 'react-hot-toast'
 import { Database, Table, ScrollText, History, Moon, Sun, BookOpen, X, BarChart2, Users, MapPin, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
@@ -19,7 +20,9 @@ import LogViewer from './components/LogViewer'
 import QualityGauge from './components/QualityGauge'
 import ChartsPanel from './components/ChartsPanel'
 import BatchHistory from './components/BatchHistory'
+import ErrorBoundary from './components/ErrorBoundary'
 import { useDarkMode } from './hooks/useDarkMode'
+import { APP_VERSION } from './lib/version'
 
 type Tab = 'datos' | 'log' | 'historial'
 
@@ -30,9 +33,12 @@ export default function Home() {
   /** Módulo detectado cuando el usuario sube un archivo equivocado */
   const [moduloEquivocado, setModuloEquivocado] = useState<'famosos' | 'lugares' | null>(null)
 
+  // useSearchParams detecta cambios en la URL sin necesidad de recargar la página
+  const searchParams = useSearchParams()
+
   // Carga automatica de un batch cuando se navega desde Analytics (?batch=<id>)
   useEffect(() => {
-    const batchId = new URLSearchParams(window.location.search).get('batch')
+    const batchId = searchParams.get('batch')
     if (!batchId) return
     fetch(`/api/batches?id=${batchId}`)
       .then((r) => r.json())
@@ -54,7 +60,7 @@ export default function Home() {
         setTab('datos')
       })
       .catch(() => {/* ignorar errores de red */})
-  }, [])
+  }, [searchParams])
 
   /**
    * Limpia el dashboard si el batch eliminado es el que se esta mostrando actualmente.
@@ -225,10 +231,14 @@ export default function Home() {
 
             {/* 2. Quality gauge + Graficos en grid 2 columnas en desktop */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              {result.qualityBefore && result.qualityAfter && (
-                <QualityGauge before={result.qualityBefore} after={result.qualityAfter} />
-              )}
-              <ChartsPanel data={result} />
+              <ErrorBoundary label="Score de calidad">
+                {result.qualityBefore && result.qualityAfter && (
+                  <QualityGauge before={result.qualityBefore} after={result.qualityAfter} />
+                )}
+              </ErrorBoundary>
+              <ErrorBoundary label="Gráficos">
+                <ChartsPanel data={result} />
+              </ErrorBoundary>
             </div>
 
             {/* 3. Tabs: Datos / Log / Historial */}
@@ -277,7 +287,7 @@ export default function Home() {
       <footer className="border-t border-gray-200 dark:border-gray-800 mt-8 py-4">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between text-xs text-gray-400 dark:text-gray-600">
           <span>COMUNAS_NORM — Pipeline ETL de normalización de texto</span>
-          <span>v0.1.0</span>
+          <span>{APP_VERSION}</span>
         </div>
       </footer>
     </div>
