@@ -72,12 +72,29 @@ function formatDiaMes(mes: number, dia: number): string {
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function FamososBirthdayBanner({ famosos }: FamososBirthdayBannerProps) {
-  // B-02: useMemo antes del early return para respetar las Rules of Hooks.
-  // Cuando famosos es null se pasa un array vacío como fallback seguro.
+  // B-02: todos los hooks ANTES de cualquier return para respetar las Rules of Hooks.
+  // Cuando famosos es null se usa array vacío como fallback seguro.
   const cumpleHoy: FamosoRaw[] = useMemo(
     () => (famosos ?? []).filter((f) => f.fechaNormalizada && esCumpleanosHoy(f.fechaNormalizada)),
     [famosos],
   )
+
+  const proximo: ProximoCumple | null = useMemo(() => {
+    if (!famosos) return null
+    let minDias = Infinity
+    let resultado: ProximoCumple | null = null
+    for (const f of famosos) {
+      if (!f.fechaNormalizada) continue
+      const md = parseMesDia(f.fechaNormalizada)
+      if (!md) continue
+      const dias = diasHastaProximoCumpleanos(md.mes, md.dia)
+      if (dias < minDias) {
+        minDias = dias
+        resultado = { famoso: f, dias, mes: md.mes, dia: md.dia }
+      }
+    }
+    return resultado
+  }, [famosos])
 
   // Mientras los datos no estén disponibles, no renderizar nada
   if (famosos === null) return null
@@ -131,23 +148,6 @@ export default function FamososBirthdayBanner({ famosos }: FamososBirthdayBanner
   }
 
   // ── Próximo cumpleaños ──────────────────────────────────────────────────────
-  // B-02: useMemo para no recorrer el array completo en cada render
-  const proximo: ProximoCumple | null = useMemo(() => {
-    let minDias = Infinity
-    let resultado: ProximoCumple | null = null
-    for (const f of famosos) {
-      if (!f.fechaNormalizada) continue
-      const md = parseMesDia(f.fechaNormalizada)
-      if (!md) continue
-      const dias = diasHastaProximoCumpleanos(md.mes, md.dia)
-      if (dias < minDias) {
-        minDias = dias
-        resultado = { famoso: f, dias, mes: md.mes, dia: md.dia }
-      }
-    }
-    return resultado
-  }, [famosos])
-
   if (proximo) {
     return (
       <div className="flex items-center gap-4 rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 px-5 py-4">
