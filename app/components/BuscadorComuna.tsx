@@ -36,10 +36,17 @@ export default function BuscadorComuna({ onResult }: BuscadorComunaProps) {
   const [cargando,    setCargando]    = useState(false)
   const [error,       setError]       = useState<string | null>(null)
   const [abierto,     setAbierto]     = useState(false)
-  const inputRef    = useRef<HTMLInputElement>(null)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const inputRef         = useRef<HTMLInputElement>(null)
+  const dropdownRef      = useRef<HTMLDivElement>(null)
+  // Bloquea la reapertura del dropdown cuando se acaba de seleccionar una sugerencia.
+  // Sin este ref, setTexto(nombreComuna) dispara el useEffect y vuelve a abrir el dropdown.
+  const ignorarApertura  = useRef(false)
 
   useEffect(() => {
+    if (ignorarApertura.current) {
+      ignorarApertura.current = false
+      return
+    }
     const resultado = filtrarSugerencias(texto)
     setSugerencias(resultado)
     setAbierto(resultado.length > 0 && texto.length >= 2)
@@ -60,6 +67,8 @@ export default function BuscadorComuna({ onResult }: BuscadorComunaProps) {
   }, [])
 
   async function procesarComuna(nombreComuna: string) {
+    // Marcar que el próximo cambio de texto viene de una selección, no del usuario
+    ignorarApertura.current = true
     setAbierto(false)
     setTexto(nombreComuna)
     setCargando(true)
