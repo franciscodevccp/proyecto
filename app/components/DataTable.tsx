@@ -14,6 +14,8 @@ interface Comuna {
   id: string
   original: string
   normalized: string
+  region: string | null
+  habitantes: number | null
 }
 
 interface DataTableProps {
@@ -39,10 +41,13 @@ export default function DataTable({ batchId }: DataTableProps) {
 
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/comunas?batchId=${batchId}`)
+    const ctrl = new AbortController()
+    fetch(`/api/comunas?batchId=${batchId}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((d) => setComunas(d.comunas ?? []))
+      .catch(() => {/* fetch cancelado al desmontar — no hay que actualizar estado */})
       .finally(() => setLoading(false))
+    return () => ctrl.abort()
   }, [batchId])
 
   useEffect(() => { setPage(1) }, [search, onlyChanged])
@@ -134,12 +139,14 @@ export default function DataTable({ batchId }: DataTableProps) {
               <th className="px-4 py-3 text-left w-16">#</th>
               <th className="px-4 py-3 text-left">Original</th>
               <th className="px-4 py-3 text-left">Normalizado</th>
+              <th className="px-4 py-3 text-left">Region</th>
+              <th className="px-4 py-3 text-left">Habitantes</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {slice.length === 0 ? (
               <tr>
-                <td colSpan={3} className="text-center py-10 text-gray-400 dark:text-gray-500">
+                <td colSpan={5} className="text-center py-10 text-gray-400 dark:text-gray-500">
                   Sin resultados para esta busqueda
                 </td>
               </tr>
@@ -150,6 +157,12 @@ export default function DataTable({ batchId }: DataTableProps) {
                   <td className="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono">{c.original}</td>
                   <td className={`px-4 py-3 font-medium ${c.original !== c.normalized ? 'text-blue-700 dark:text-blue-400' : 'text-gray-800 dark:text-gray-100'}`}>
                     {c.normalized}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                    {c.region ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                    {c.habitantes != null ? c.habitantes.toLocaleString('es-CL') : '—'}
                   </td>
                 </tr>
               ))

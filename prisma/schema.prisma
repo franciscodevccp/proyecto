@@ -15,6 +15,7 @@ model Batch {
   totalOutput   Int
   duplicates    Int
   changes       Int
+  noEncontrados Int        @default(0)
   qualityBefore Float?     // Score de calidad del dataset antes de normalizar (0-100)
   qualityAfter  Float?     // Score de calidad del dataset despues de normalizar (0-100)
   comunas       Comuna[]
@@ -28,6 +29,8 @@ model Comuna {
   id         String   @id @default(cuid())
   original   String
   normalized String
+  region     String?
+  habitantes Int?
   batchId    String
   batch      Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
@@ -78,6 +81,9 @@ model Famoso {
   fechaAprox       String?     // Texto libre para fechas históricas: "aprox. 69 a.C."
   edad             Int?        // Edad calculada al día de hoy (null si la fecha es aproximada)
   esCumpleanos     Boolean     @default(false) // True si hoy coincide con su día y mes de nacimiento
+  fotoUrl          String?     // URL de la imagen obtenida de Wikipedia
+  fotoFuente       String?     // Fuente de la imagen (ej: "Wikipedia")
+  fotoFechaCaptura DateTime?   // Fecha en que se capturó la imagen de la API
   createdAt        DateTime    @default(now())
 
   @@index([batchId])

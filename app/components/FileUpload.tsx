@@ -61,6 +61,7 @@ export interface ProcessResponse {
   qualityAfter: QualityBreakdown | null
   dryRun?: boolean
   preview?: { original: string; normalized: string; changeType: string }[]
+  noEncontrados?: number
 }
 
 export default function FileUpload({ onResult, onWrongModule }: FileUploadProps) {

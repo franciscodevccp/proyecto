@@ -26,6 +26,7 @@ import {
   Check,
 } from 'lucide-react'
 import FamososSqlExport from './FamososSqlExport'
+import FamososImagenModal from './FamososImagenModal'
 import type { FamosoRaw } from './FamososBirthdayBanner'
 
 interface FamososTableProps {
@@ -50,6 +51,9 @@ export default function FamososTable({ batchId, famosos: famososProp }: FamososT
   // Filtros activos
   const [busqueda, setBusqueda] = useState('')
   const [soloCumpleanos, setSoloCumpleanos] = useState(false)
+
+  // Modal de imagen de famoso
+  const [modalImagenId, setModalImagenId] = useState<string | null>(null)
 
   // Modal de exportación
   const [mostrarModal, setMostrarModal] = useState(false)
@@ -199,12 +203,13 @@ export default function FamososTable({ batchId, famosos: famososProp }: FamososT
               <th className="px-4 py-3 text-left">Fecha normalizada</th>
               <th className="px-4 py-3 text-left w-16">Edad</th>
               <th scope="col" aria-label="Cumpleaños hoy" className="px-4 py-3 text-center w-12"><Cake className="w-3.5 h-3.5 inline text-pink-400" /></th>
+              <th scope="col" className="px-4 py-3 text-center w-24">Imagen</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {slice.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-gray-400 dark:text-gray-500">
+                <td colSpan={7} className="text-center py-10 text-gray-400 dark:text-gray-500">
                   Sin resultados para esta búsqueda
                 </td>
               </tr>
@@ -241,6 +246,14 @@ export default function FamososTable({ batchId, famosos: famososProp }: FamososT
                         <Cake className="w-4 h-4 text-pink-500" />
                       </span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      onClick={() => setModalImagenId(f.id)}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Ver imagen
+                    </button>
                   </td>
                 </tr>
               ))
@@ -368,6 +381,21 @@ export default function FamososTable({ batchId, famosos: famososProp }: FamososT
           </div>
         </div>
       )}
+
+      {/* Modal de imagen del famoso */}
+      {modalImagenId && (() => {
+        const famoso = famosos.find((f) => f.id === modalImagenId)
+        if (!famoso) return null
+        return (
+          <FamososImagenModal
+            famosoId={famoso.id}
+            nombre={famoso.nombre}
+            edad={famoso.edad}
+            fechaOriginal={famoso.fechaOriginal}
+            onClose={() => setModalImagenId(null)}
+          />
+        )
+      })()}
     </div>
   )
 }

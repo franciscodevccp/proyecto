@@ -14,6 +14,7 @@ import { Database, Table, ScrollText, History, Moon, Sun, BookOpen, X, BarChart2
 import Link from 'next/link'
 
 import FileUpload, { type ProcessResponse } from './components/FileUpload'
+import BuscadorComuna from './components/BuscadorComuna'
 import StatsPanel from './components/StatsPanel'
 import DataTable from './components/DataTable'
 import LogViewer from './components/LogViewer'
@@ -180,12 +181,12 @@ export default function Home() {
             {/* Toggle dark mode */}
             <button
               onClick={toggleDark}
+              aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
               className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             >
               {isDark
-                ? <Sun className="w-4 h-4 text-yellow-400" />
-                : <Moon className="w-4 h-4 text-gray-500" />
+                ? <Sun className="w-4 h-4 text-yellow-400" aria-hidden="true" />
+                : <Moon className="w-4 h-4 text-gray-500" aria-hidden="true" />
               }
             </button>
           </div>
@@ -207,6 +208,17 @@ export default function Home() {
             </p>
           </div>
           <FileUpload onResult={handleResult} onWrongModule={setModuloEquivocado} />
+          {/* Divisor */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200 dark:border-gray-700" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white dark:bg-gray-900 px-3 text-gray-400">o busca por nombre</span>
+            </div>
+          </div>
+          {/* Buscador de comunas */}
+          <BuscadorComuna onResult={handleResult} />
         </section>
 
         {/* Resultados */}

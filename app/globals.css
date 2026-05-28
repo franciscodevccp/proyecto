@@ -28,3 +28,17 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Cluster de markers — color teal para coincidir con módulo Lugares */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background-color: rgba(13, 148, 136, 0.5) !important;
+}
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background-color: rgba(13, 148, 136, 0.8) !important;
+  color: white !important;
+  font-weight: 700;
+}

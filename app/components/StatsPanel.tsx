@@ -5,7 +5,7 @@
  * Tarjetas de estadisticas del proceso de normalizacion con soporte dark mode.
  */
 
-import { FileText, CheckCircle, Copy, Pencil, SpellCheck } from 'lucide-react'
+import { FileText, CheckCircle, Copy, Pencil, SpellCheck, AlertCircle } from 'lucide-react'
 import type { ProcessResponse } from './FileUpload'
 
 interface StatsPanelProps {
@@ -22,6 +22,7 @@ export default function StatsPanel({ data }: StatsPanelProps) {
       color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950' },
     { label: 'Registros normalizados', value: data.changes, icon: Pencil,
       color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950' },
+    { label: 'No encontrados en fuente oficial', value: data.noEncontrados ?? 0, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950' },
   ]
 
   return (

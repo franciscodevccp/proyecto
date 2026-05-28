@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       prisma.comuna.findMany({
         where: { batchId },
         orderBy: { createdAt: 'asc' },
-        select: { id: true, original: true, normalized: true },
+        select: { id: true, original: true, normalized: true, region: true, habitantes: true },
         skip: (page - 1) * limit,
         take: limit,
       }),

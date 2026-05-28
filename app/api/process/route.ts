@@ -9,6 +9,7 @@ import { prisma } from '../../lib/prisma'
 import { processFile } from '../../lib/normalizer'
 import { parseContent } from '../../lib/parser'
 import { resolveRuleSet, type ETLRuleSet } from '../../lib/etl-rules'
+import { buscarDatosComuna } from '../../lib/dpa-cache'
 
 /**
  * POST /api/process
@@ -82,6 +83,17 @@ export async function POST(req: NextRequest) {
     // Ejecutar el pipeline ETL sobre las lineas ya parseadas
     const result = processFile(parsed.lines, { rules, correct })
 
+    // ── Enriquecer con región y habitantes desde API DPA + dataset INE ──────────
+    let noEncontrados = 0
+    const enriquecimientos = await Promise.all(
+      result.comunas.map((c) => buscarDatosComuna(c.normalized))
+    )
+    const comunasEnriquecidas = result.comunas.map((c, i) => {
+      const datos = enriquecimientos[i]
+      if (!datos) noEncontrados++
+      return { ...c, region: datos?.region ?? null, habitantes: datos?.habitantes ?? null }
+    })
+
     // En modo dryRun no se persiste nada en la BD
     if (dryRun) {
       return NextResponse.json({
@@ -96,6 +108,7 @@ export async function POST(req: NextRequest) {
         correctionMode: correct,
         qualityBefore: result.qualityBefore,
         qualityAfter: result.qualityAfter,
+        noEncontrados,
         // Preview: primeros 20 resultados para mostrar en la UI
         preview: result.logs.slice(0, 20).map((l) => ({
           original: l.original,
@@ -113,12 +126,15 @@ export async function POST(req: NextRequest) {
         totalOutput: result.totalOutput,
         duplicates: result.duplicates,
         changes: result.changes,
+        noEncontrados,
         qualityBefore: result.qualityBefore.score,
         qualityAfter: result.qualityAfter.score,
         comunas: {
-          create: result.comunas.map((c) => ({
+          create: comunasEnriquecidas.map((c) => ({
             original: c.original,
             normalized: c.normalized,
+            region: c.region,
+            habitantes: c.habitantes,
           })),
         },
         logs: {
@@ -145,6 +161,7 @@ export async function POST(req: NextRequest) {
       correctionMode: correct,
       qualityBefore: result.qualityBefore,
       qualityAfter: result.qualityAfter,
+      noEncontrados: batch.noEncontrados,
     })
   } catch (error) {
     console.error('[process]', error)
