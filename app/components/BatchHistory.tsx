@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { FileText, Trash2, ExternalLink, RefreshCw } from 'lucide-react'
 import type { ProcessResponse } from './FileUpload'
+import type { QualityBreakdown } from '../lib/quality-score'
 
 /** Estructura de un batch en el historial */
 interface BatchSummary {
@@ -21,6 +22,7 @@ interface BatchSummary {
   duplicates: number
   changes: number
   qualityBefore: number | null
+  noEncontrados: number
 }
 
 interface BatchHistoryProps {
@@ -28,6 +30,26 @@ interface BatchHistoryProps {
   onLoad: (data: ProcessResponse) => void
   /** Callback opcional que se llama con el id del batch recien eliminado */
   onDelete?: (id: string) => void
+}
+
+/**
+ * Construye un QualityBreakdown mínimo desde el score almacenado en BD.
+ * El desglose de issues no se guarda en BD, por lo que se rellena con ceros.
+ * Permite que QualityGauge muestre el score correcto al cargar batches históricos.
+ */
+function scoreToBreakdown(score: number, totalRecords: number): QualityBreakdown {
+  let grade: QualityBreakdown['grade']
+  if (score >= 90) grade = 'A'
+  else if (score >= 75) grade = 'B'
+  else if (score >= 55) grade = 'C'
+  else if (score >= 35) grade = 'D'
+  else grade = 'F'
+  return {
+    score,
+    totalRecords,
+    issues: { withAccents: 0, wrongCase: 0, duplicates: 0, extraSpaces: 0, emptyLines: 0 },
+    grade,
+  }
 }
 
 /** Formatea una fecha ISO a string legible en formato chileno */
@@ -84,7 +106,12 @@ export default function BatchHistory({ onLoad, onDelete }: BatchHistoryProps) {
       changes: batch.changes,
       corrections: 0,
       correctionMode: false,
-      qualityBefore: null,
+      noEncontrados: batch.noEncontrados ?? 0,
+      // Se reconstruye QualityBreakdown desde el score guardado en BD para
+      // que QualityGauge muestre el valor correcto al cargar batches históricos.
+      qualityBefore: batch.qualityBefore !== null
+        ? scoreToBreakdown(batch.qualityBefore, batch.totalInput)
+        : null,
       qualityAfter: null,
     })
   }

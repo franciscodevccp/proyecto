@@ -17,6 +17,7 @@ const BATCH_SELECT = {
   duplicates: true,
   changes: true,
   qualityBefore: true,
+  noEncontrados: true,
 } as const
 
 /**
@@ -41,14 +42,23 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(req.nextUrl.searchParams.get('limit') ?? '20', 10)
 
   try {
-    const batches = await prisma.batch.findMany({
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-      select: BATCH_SELECT,
-    })
+    // Solicitar lista paginada y total en paralelo para una sola ida a la BD
+    const [batches, total] = await Promise.all([
+      prisma.batch.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: BATCH_SELECT,
+      }),
+      prisma.batch.count(),
+    ])
 
-    return NextResponse.json({ batches })
+    return NextResponse.json({
+      batches,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    })
   } catch (error) {
     console.error('[batches GET]', error)
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 })

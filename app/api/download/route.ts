@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
           `Linea ${String(l.lineNumber).padStart(4, '0')} [${l.changeType.toUpperCase().padEnd(10)}] "${l.original}" → "${l.normalized}"${l.detail ? ` (${l.detail})` : ''}`,
       )
 
-      const footer = `\n${'='.repeat(60)}\nTotal entrada: ${batch.totalInput} | Unicos: ${batch.totalOutput} | Duplicados: ${batch.duplicates} | Normalizados: ${batch.changes}`
+      const footer = `\n${'='.repeat(60)}\nTotal entrada: ${batch.totalInput} | Unicos: ${batch.totalOutput} | Duplicados: ${batch.duplicates} | Normalizados: ${batch.changes} | No encontrados: ${batch.noEncontrados ?? 0}`
 
       return new NextResponse('﻿' + header + lines.join('\n') + footer, {
         headers: {
