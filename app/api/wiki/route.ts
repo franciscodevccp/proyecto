@@ -1,36 +1,58 @@
 /**
  * api/wiki/route.ts
- * Proxy del servidor hacia la Wikipedia REST API.
+ * Proxy del servidor hacia Wikipedia para enriquecer famosos con foto y descripción.
  *
- * Ventajas frente a llamar a Wikipedia directamente desde el navegador:
- *   - Evita bloqueos CORS / CSP del browser
- *   - Permite cachear respuestas en memoria (TTL 1 hora) para que
- *     cargar el mismo batch no vuelva a golpear Wikipedia
- *   - El servidor añade un User-Agent válido que Wikipedia recomienda
+ * DISEÑO: usa la MediaWiki Action API (w/api.php) en lugar de la REST API
+ * (rest_v1/page/summary) por dos razones decisivas:
  *
- * GET /api/wiki?nombre=Leonardo+Da+Vinci
- * Responde: { descripcion: string | null, foto: string | null }
+ *   1. BATCH: permite consultar hasta 50 títulos en UNA sola petición
+ *      (titles=A|B|C...). Antes se hacían 50 peticiones separadas, lo que
+ *      disparaba HTTP 429 (rate limit) y dejaba personas sin imagen.
+ *
+ *   2. REDIRECTS AUTOMÁTICOS: con redirects=1 resuelve CUALQUIER redirect
+ *      genéricamente (ej: "Mozart" → "Wolfgang Amadeus Mozart",
+ *      "Napoleon" → "Napoleon"), sin necesidad de listas hardcodeadas.
+ *
+ * Endpoints:
+ *   GET  /api/wiki?nombre=Mozart           → un solo nombre
+ *   POST /api/wiki  body { nombres: [...] } → lote de nombres (recomendado)
+ *
+ * Respuesta GET:  { descripcion: string | null, foto: string | null }
+ * Respuesta POST: { resultados: { [nombre]: { descripcion, foto } } }
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-/** Subconjunto de la respuesta de Wikipedia REST API page/summary */
-interface WikiRawResponse {
-  description?: string
-  thumbnail?: { source?: string }
-  type?: string
-  title?: string
-}
-
-/** Resultado de Wikipedia open-search (array de 4 elementos) */
-type WikiSearchResult = [string, string[], string[], string[]]
-
-/** Estructura simplificada que devuelve este endpoint */
+/** Estructura simplificada que devuelve este endpoint por cada nombre */
 interface WikiEntry {
   descripcion: string | null
   foto:        string | null
+}
+
+/** Página individual en la respuesta de la MediaWiki Action API */
+interface MWPage {
+  pageid?:     number
+  title:       string
+  description?: string
+  thumbnail?:  { source?: string; width?: number; height?: number }
+  missing?:    string
+}
+
+/** Entrada de los arrays normalized/redirects de la Action API */
+interface MWMapping {
+  from: string
+  to:   string
+}
+
+/** Respuesta completa de la MediaWiki Action API (query) */
+interface MWResponse {
+  query?: {
+    normalized?: MWMapping[]
+    redirects?:  MWMapping[]
+    pages?:      Record<string, MWPage>
+  }
 }
 
 // ─── Cache en memoria ─────────────────────────────────────────────────────────
@@ -38,64 +60,46 @@ interface WikiEntry {
 /** Duración del cache para resultados exitosos (1 hora) */
 const CACHE_TTL_MS = 60 * 60 * 1000
 
-/** Duración del cache para artículos verdaderamente no encontrados (404) */
+/** Duración del cache para nombres sin resultado (30 min, permite reintentar antes) */
 const CACHE_NOT_FOUND_TTL_MS = 30 * 60 * 1000
 
-/** Cache: nombre normalizado → datos cacheados con timestamp de expiración */
+/** Cache: clave normalizada (minúsculas) → datos cacheados con expiración */
 const wikiCache = new Map<string, { data: WikiEntry; expiry: number }>()
 
-// ─── Headers compartidos ──────────────────────────────────────────────────────
+// ─── Constantes ───────────────────────────────────────────────────────────────
 
 const WIKI_HEADERS = {
   'User-Agent': 'COMUNAS_NORM/1.0 (proyecto educativo; sin fines comerciales)',
   'Accept': 'application/json',
 }
 
-// ─── Throttle server-side ─────────────────────────────────────────────────────
+/** Máximo de títulos por petición que acepta la Action API para usuarios anónimos */
+const MAX_TITULOS_POR_PETICION = 50
 
-/**
- * Intervalo mínimo entre peticiones salientes a Wikipedia (ms).
- * Wikipedia permite ~200 req/s con User-Agent válido, pero en la práctica
- * manda 429 cuando llegan muchas peticiones en ráfaga desde la misma IP.
- * Con 300 ms entre peticiones hacemos máx. ~3 req/s → sin 429.
- */
-const WIKI_DELAY_MS = 300
-
-/** Timestamp en que se envió la última petición a Wikipedia */
-let lastWikiRequest = 0
-
-/**
- * Espera lo necesario para respetar WIKI_DELAY_MS entre peticiones.
- * Actualiza lastWikiRequest de forma atómica para que peticiones
- * concurrentes se encolen correctamente.
- */
-function throttleWiki(): Promise<void> {
-  const now = Date.now()
-  const delay = Math.max(0, lastWikiRequest + WIKI_DELAY_MS - now)
-  // Reservar el slot ANTES de esperar (evita race conditions)
-  lastWikiRequest = now + delay
-  if (delay === 0) return Promise.resolve()
-  return new Promise((resolve) => setTimeout(resolve, delay))
-}
+/** Tamaño de la miniatura solicitada a Wikipedia (px) */
+const THUMB_SIZE = 400
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Clave de cache: minúsculas para unificar variaciones de mayúsculas */
+function toCacheKey(nombre: string): string {
+  return nombre.trim().toLowerCase()
+}
+
 /**
  * Corrige numerales romanos mal capitalizados por el normalizador Title Case.
- * El normalizador convierte "II" → "Ii", "III" → "Iii", etc.
- * Wikipedia usa mayúsculas para numerales romanos en títulos de artículos.
- * Ejemplos: "Queen Elizabeth Ii" → "Queen Elizabeth II"
- *           "Henry Viii" → "Henry VIII"
- *           "Pope John Paul Ii" → "Pope John Paul II"
+ * El normalizador convierte "II" → "Ii", "VIII" → "Viii", etc. y Wikipedia
+ * usa mayúsculas para numerales romanos en títulos.
+ * Ejemplos: "Queen Elizabeth Ii" → "Queen Elizabeth II", "Henry Viii" → "Henry VIII"
  */
 function corregirNumeralesRomanos(nombre: string): string {
-  // Patrón: palabra que solo contiene I, V, X, L, C, D, M (en cualquier case)
-  // con al menos una vocal romana (I o V) para evitar falsos positivos
   return nombre.replace(/\b([IVXLCDMivxlcdm]+)\b/g, (match) => {
     const upper = match.toUpperCase()
-    // Solo corregir si el original estaba en Title Case incorrecto (ej: "Ii", "Iii")
-    // y la versión uppercase es un numeral romano válido (≤ 8 chars para evitar siglas)
-    if (match !== upper && upper.length <= 8 && /^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/.test(upper)) {
+    if (
+      match !== upper &&
+      upper.length <= 8 &&
+      /^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/.test(upper)
+    ) {
       return upper
     }
     return match
@@ -103,67 +107,204 @@ function corregirNumeralesRomanos(nombre: string): string {
 }
 
 /**
- * Llama a la Wikipedia REST API page/summary para un título dado.
- * Devuelve la respuesta cruda o null si falla (timeout, red, etc.).
- * Solo devuelve null en errores transitorios — en 404 devuelve el objeto con status.
+ * Consulta la MediaWiki Action API para un lote de títulos (máximo 50).
+ * Devuelve un Map de título-enviado → WikiEntry, resolviendo automáticamente
+ * la normalización de mayúsculas y los redirects de Wikipedia.
+ *
+ * @param titulos - Lista de títulos a consultar (ya con numerales corregidos)
+ * @param signal  - AbortSignal para cancelar la petición
  */
-async function fetchSummary(
-  titulo: string,
+async function fetchLoteActionApi(
+  titulos: string[],
   signal: AbortSignal,
-): Promise<{ raw: WikiRawResponse; status: number } | null> {
-  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(titulo)}`
-  try {
-    // Respetar el intervalo mínimo entre peticiones para evitar 429
-    await throttleWiki()
-    if (signal.aborted) return null
-    const res = await fetch(url, { headers: WIKI_HEADERS, signal })
-    console.log(`[wiki] ${titulo} → HTTP ${res.status}`)
+): Promise<Map<string, WikiEntry>> {
+  const resultado = new Map<string, WikiEntry>()
+  if (titulos.length === 0) return resultado
 
-    // Retry automático si Wikipedia responde 429 (rate limit transitorio)
-    if (res.status === 429) {
-      await new Promise((r) => setTimeout(r, 2000))
-      if (signal.aborted) return null
-      const retry = await fetch(url, { headers: WIKI_HEADERS, signal })
-      console.log(`[wiki] ${titulo} → retry HTTP ${retry.status}`)
-      if (!retry.ok) return { raw: {}, status: retry.status }
-      const raw = (await retry.json()) as WikiRawResponse
-      console.log(`[wiki] ${titulo} → type=${raw.type ?? 'standard'} thumb=${!!raw.thumbnail?.source}`)
-      return { raw, status: retry.status }
-    }
+  // Construir la URL de la Action API.
+  // pilimit=max es CRÍTICO: sin él, pageimages solo devuelve thumbnail
+  // para la primera página cuando se consultan múltiples títulos.
+  const params = new URLSearchParams({
+    action:       'query',
+    format:       'json',
+    prop:         'pageimages|description',
+    piprop:       'thumbnail',
+    pithumbsize:  String(THUMB_SIZE),
+    pilimit:      'max',
+    redirects:    '1',
+    titles:       titulos.join('|'),
+    origin:       '*',
+  })
+  const url = `https://en.wikipedia.org/w/api.php?${params.toString()}`
 
-    if (!res.ok) return { raw: {}, status: res.status }
-    const raw = (await res.json()) as WikiRawResponse
-    console.log(`[wiki] ${titulo} → type=${raw.type ?? 'standard'} thumb=${!!raw.thumbnail?.source}`)
-    return { raw, status: res.status }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    console.error(`[wiki] ${titulo} → ERROR: ${msg}`)
-    return null
+  const res = await fetch(url, { headers: WIKI_HEADERS, signal })
+  if (!res.ok) {
+    console.error(`[wiki] Action API → HTTP ${res.status} para ${titulos.length} títulos`)
+    // Marcar todos como sin datos (no se cachean los errores aquí)
+    return resultado
   }
+
+  const data = (await res.json()) as MWResponse
+  const query = data.query
+
+  // ── Construir mapas de resolución de títulos ──────────────────────────────
+  // normalized: corrige mayúsculas/formato del título enviado
+  // redirects:  resuelve redirects (ej: "Mozart" → "Wolfgang Amadeus Mozart")
+  const mapaNormalizado = new Map<string, string>()
+  for (const n of query?.normalized ?? []) mapaNormalizado.set(n.from, n.to)
+
+  const mapaRedirect = new Map<string, string>()
+  for (const r of query?.redirects ?? []) mapaRedirect.set(r.from, r.to)
+
+  // Indexar las páginas por su título final
+  const paginasPorTitulo = new Map<string, MWPage>()
+  for (const page of Object.values(query?.pages ?? {})) {
+    paginasPorTitulo.set(page.title, page)
+  }
+
+  /**
+   * Sigue la cadena de resolución de un título enviado hasta su título final:
+   * enviado → normalizado → redirect (puede encadenar varios redirects).
+   */
+  function resolverTituloFinal(enviado: string): string {
+    let actual = mapaNormalizado.get(enviado) ?? enviado
+    // Seguir redirects encadenados (máximo 5 saltos por seguridad)
+    for (let i = 0; i < 5; i++) {
+      const siguiente = mapaRedirect.get(actual)
+      if (!siguiente || siguiente === actual) break
+      actual = siguiente
+    }
+    return actual
+  }
+
+  // ── Mapear cada título enviado a su resultado ─────────────────────────────
+  for (const enviado of titulos) {
+    const tituloFinal = resolverTituloFinal(enviado)
+    const page = paginasPorTitulo.get(tituloFinal)
+
+    const entry: WikiEntry = {
+      descripcion: page?.description ?? null,
+      foto:        page?.thumbnail?.source ?? null,
+    }
+    resultado.set(enviado, entry)
+  }
+
+  return resultado
 }
 
 /**
- * Usa la Wikipedia opensearch API para encontrar el título canónico
- * de un artículo cuando el nombre exacto no lo resuelve.
- * Devuelve el primer título sugerido o null si no encuentra nada.
+ * Obtiene los datos de Wikipedia para un conjunto de nombres, usando cache
+ * y consultando solo los nombres no cacheados en lotes de 50.
+ *
+ * @param nombres - Nombres a enriquecer (tal como vienen del batch)
+ * @param signal  - AbortSignal para cancelar
+ * @returns Map de nombre-original → WikiEntry
  */
-async function buscarTituloWiki(
-  nombre: string,
+async function obtenerDatosWiki(
+  nombres: string[],
   signal: AbortSignal,
-): Promise<string | null> {
-  const url = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(nombre)}&limit=1&format=json&origin=*`
+): Promise<Map<string, WikiEntry>> {
+  const resultado = new Map<string, WikiEntry>()
+  const ahora = Date.now()
+
+  // Separar los que están en cache de los que hay que pedir
+  const porPedir: { original: string; corregido: string }[] = []
+  for (const nombre of nombres) {
+    const cacheKey = toCacheKey(nombre)
+    const cached = wikiCache.get(cacheKey)
+    if (cached && cached.expiry > ahora) {
+      resultado.set(nombre, cached.data)
+    } else {
+      porPedir.push({ original: nombre, corregido: corregirNumeralesRomanos(nombre) })
+    }
+  }
+
+  // Procesar los pendientes en lotes de MAX_TITULOS_POR_PETICION
+  for (let i = 0; i < porPedir.length; i += MAX_TITULOS_POR_PETICION) {
+    if (signal.aborted) break
+    const lote = porPedir.slice(i, i + MAX_TITULOS_POR_PETICION)
+    // Mapa título-corregido → nombre-original para devolver con la clave correcta
+    const corregidoAOriginal = new Map<string, string>()
+    for (const item of lote) corregidoAOriginal.set(item.corregido, item.original)
+
+    try {
+      const datosLote = await fetchLoteActionApi(
+        lote.map((l) => l.corregido),
+        signal,
+      )
+
+      for (const item of lote) {
+        const entry = datosLote.get(item.corregido) ?? { descripcion: null, foto: null }
+        resultado.set(item.original, entry)
+
+        // Cachear: éxito 1 hora, sin-resultado 30 min
+        const ttl = entry.foto || entry.descripcion ? CACHE_TTL_MS : CACHE_NOT_FOUND_TTL_MS
+        wikiCache.set(toCacheKey(item.original), { data: entry, expiry: Date.now() + ttl })
+      }
+    } catch (e: unknown) {
+      // Error de red/timeout en el lote: devolver vacío sin cachear (permite reintentar)
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`[wiki] Error en lote: ${msg}`)
+      for (const item of lote) {
+        if (!resultado.has(item.original)) {
+          resultado.set(item.original, { descripcion: null, foto: null })
+        }
+      }
+    }
+  }
+
+  return resultado
+}
+
+// ─── Handler POST (lote, recomendado) ───────────────────────────────────────────
+
+export async function POST(req: NextRequest) {
+  let body: unknown
   try {
-    const res = await fetch(url, { headers: WIKI_HEADERS, signal })
-    if (!res.ok) return null
-    const data = (await res.json()) as WikiSearchResult
-    // data[1] es el array de títulos
-    return Array.isArray(data[1]) && data[1].length > 0 ? data[1][0] : null
+    body = await req.json()
   } catch {
-    return null
+    return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 })
+  }
+
+  if (
+    typeof body !== 'object' ||
+    body === null ||
+    !Array.isArray((body as { nombres?: unknown }).nombres)
+  ) {
+    return NextResponse.json({ error: 'Se requiere un array "nombres"' }, { status: 400 })
+  }
+
+  // Filtrar solo strings no vacíos y eliminar duplicados
+  const nombresRaw = (body as { nombres: unknown[] }).nombres
+  const nombres = Array.from(
+    new Set(
+      nombresRaw
+        .filter((n): n is string => typeof n === 'string')
+        .map((n) => n.trim())
+        .filter((n) => n.length > 0),
+    ),
+  )
+
+  if (nombres.length === 0) {
+    return NextResponse.json({ resultados: {} })
+  }
+
+  // Timeout amplio: una sola petición batch responde en < 3 s normalmente
+  const signal = AbortSignal.timeout(15000)
+
+  try {
+    const mapa = await obtenerDatosWiki(nombres, signal)
+    const resultados: Record<string, WikiEntry> = {}
+    for (const [nombre, entry] of mapa) resultados[nombre] = entry
+    return NextResponse.json({ resultados })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[wiki POST] ${msg}`)
+    return NextResponse.json({ resultados: {} })
   }
 }
 
-// ─── Handler ──────────────────────────────────────────────────────────────────
+// ─── Handler GET (un solo nombre, compatibilidad) ───────────────────────────────
 
 export async function GET(req: NextRequest) {
   const nombre = req.nextUrl.searchParams.get('nombre')?.trim()
@@ -171,93 +312,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Parámetro "nombre" requerido' }, { status: 400 })
   }
 
-  // Clave de cache en minúsculas para unificar variaciones de mayúsculas
-  const cacheKey = nombre.toLowerCase()
-
-  // Devolver resultado cacheado si no ha expirado
-  const cached = wikiCache.get(cacheKey)
-  if (cached && cached.expiry > Date.now()) {
-    return NextResponse.json(cached.data)
-  }
-
-  // Corregir numerales romanos antes de buscar (Title Case convierte "II" → "Ii")
-  const nombreCorregido = corregirNumeralesRomanos(nombre)
-
-  // Timeout compartido de 15 segundos para todo el proceso (incluyendo retry 429)
   const signal = AbortSignal.timeout(15000)
 
   try {
-    // ── Intento 1: nombre directo (con numerales corregidos) ─────────────────
-    const resultado = await fetchSummary(nombreCorregido, signal)
-
-    if (resultado === null) {
-      // Error transitorio (timeout, red): NO cachear para que el próximo intento reintente
-      return NextResponse.json({ descripcion: null, foto: null })
-    }
-
-    if (resultado.status === 404) {
-      // ── Intento 2: buscar título canónico con opensearch ─────────────────
-      // El nombre normalizado (Title Case) a veces no coincide exactamente
-      // con el título del artículo de Wikipedia (ej: "Van Gogh" vs "van Gogh").
-      const tituloCanon = await buscarTituloWiki(nombreCorregido, signal)
-
-      if (tituloCanon && tituloCanon.toLowerCase() !== nombre.toLowerCase()) {
-        const resultado2 = await fetchSummary(tituloCanon, signal)
-        if (resultado2 && resultado2.status === 200 && resultado2.raw.type !== 'disambiguation') {
-          const entry: WikiEntry = {
-            descripcion: resultado2.raw.description ?? null,
-            foto:        resultado2.raw.thumbnail?.source ?? null,
-          }
-          wikiCache.set(cacheKey, { data: entry, expiry: Date.now() + CACHE_TTL_MS })
-          return NextResponse.json(entry)
-        }
-      }
-
-      // Artículo verdaderamente no encontrado: cachear por 30 min (no 1 hora)
-      // para que un cambio de nombre en el batch pueda reintentarlo antes
-      const empty: WikiEntry = { descripcion: null, foto: null }
-      wikiCache.set(cacheKey, { data: empty, expiry: Date.now() + CACHE_NOT_FOUND_TTL_MS })
-      return NextResponse.json(empty)
-    }
-
-    if (resultado.status !== 200) {
-      // Error del servidor de Wikipedia (429, 503, etc.): NO cachear
-      // para que el próximo intento pueda reintentar
-      return NextResponse.json({ descripcion: null, foto: null })
-    }
-
-    const raw = resultado.raw
-
-    // Ignorar páginas de desambiguación (type = "disambiguation")
-    if (raw.type === 'disambiguation') {
-      // Intentar con opensearch para encontrar el artículo más relevante
-      const tituloCanon = await buscarTituloWiki(nombreCorregido, signal)
-      if (tituloCanon && tituloCanon.toLowerCase() !== nombreCorregido.toLowerCase()) {
-        const resultado2 = await fetchSummary(tituloCanon, signal)
-        if (resultado2 && resultado2.status === 200 && resultado2.raw.type !== 'disambiguation') {
-          const entry: WikiEntry = {
-            descripcion: resultado2.raw.description ?? null,
-            foto:        resultado2.raw.thumbnail?.source ?? null,
-          }
-          wikiCache.set(cacheKey, { data: entry, expiry: Date.now() + CACHE_TTL_MS })
-          return NextResponse.json(entry)
-        }
-      }
-      const empty: WikiEntry = { descripcion: null, foto: null }
-      wikiCache.set(cacheKey, { data: empty, expiry: Date.now() + CACHE_NOT_FOUND_TTL_MS })
-      return NextResponse.json(empty)
-    }
-
-    const entry: WikiEntry = {
-      descripcion: raw.description ?? null,
-      foto:        raw.thumbnail?.source ?? null,
-    }
-
-    wikiCache.set(cacheKey, { data: entry, expiry: Date.now() + CACHE_TTL_MS })
+    const mapa = await obtenerDatosWiki([nombre], signal)
+    const entry = mapa.get(nombre) ?? { descripcion: null, foto: null }
     return NextResponse.json(entry)
-
   } catch {
-    // Timeout global u otro error inesperado: NO cachear
     return NextResponse.json({ descripcion: null, foto: null })
   }
 }

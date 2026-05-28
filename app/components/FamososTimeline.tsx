@@ -60,12 +60,6 @@ const FOTO_H = 120
  */
 const MAX_TIMELINE_ITEMS = 50
 
-/**
- * Cuántas peticiones a /api/wiki se lanzan en paralelo al mismo tiempo.
- * Limita la carga sobre el servidor sin sacrificar velocidad perceptible.
- */
-const CONCURRENCIA = 6
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -99,36 +93,48 @@ function eraGradient(anio: number): string {
   return 'linear-gradient(160deg,#9d174d 0%,#ec4899 100%)'
 }
 
+/** Respuesta del endpoint POST /api/wiki */
+interface WikiBatchResponse {
+  resultados: Record<string, WikiInfo>
+}
+
 /**
- * Carga los datos de Wikipedia para un lote de items en paralelo
- * a través del proxy /api/wiki.
+ * Carga los datos de Wikipedia para TODOS los items en UNA sola petición POST.
  *
- * @param lote   - Items a enriquecer
+ * El proxy /api/wiki usa la MediaWiki Action API que acepta hasta 50 títulos
+ * por petición, eliminando el rate-limiting (HTTP 429) que aparecía al hacer
+ * una petición por persona. Los redirects (ej: "Mozart" → "Wolfgang Amadeus
+ * Mozart") se resuelven en el servidor de forma genérica para cualquier nombre.
+ *
+ * @param items  - Items a enriquecer
  * @param signal - AbortSignal para cancelar si el componente se desmonta
- * @returns Mapa id → WikiInfo obtenido en este lote
+ * @returns Mapa id → WikiInfo
  */
-async function fetchLoteWiki(
-  lote: FamosoCronologico[],
+async function fetchWikiBatch(
+  items: FamosoCronologico[],
   signal: AbortSignal,
 ): Promise<Map<string, WikiInfo>> {
   const resultado = new Map<string, WikiInfo>()
-  await Promise.all(
-    lote.map(async (item) => {
-      try {
-        const url = `/api/wiki?nombre=${encodeURIComponent(item.nombre)}`
-        const res = await fetch(url, { signal })
-        if (!res.ok) {
-          resultado.set(item.id, { descripcion: null, foto: null })
-          return
-        }
-        const data = (await res.json()) as WikiInfo
-        resultado.set(item.id, data)
-      } catch {
-        // Error de red o abort — marca como sin datos (muestra gradiente de era)
-        resultado.set(item.id, { descripcion: null, foto: null })
-      }
-    }),
-  )
+  try {
+    const res = await fetch('/api/wiki', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ nombres: items.map((i) => i.nombre) }),
+      signal,
+    })
+    if (!res.ok) {
+      items.forEach((i) => resultado.set(i.id, { descripcion: null, foto: null }))
+      return resultado
+    }
+    const data = (await res.json()) as WikiBatchResponse
+    // Mapear cada item por su id usando el nombre como clave de la respuesta
+    items.forEach((item) => {
+      resultado.set(item.id, data.resultados[item.nombre] ?? { descripcion: null, foto: null })
+    })
+  } catch {
+    // Error de red o abort — marcar todos como sin datos (muestra gradiente de era)
+    items.forEach((i) => resultado.set(i.id, { descripcion: null, foto: null }))
+  }
   return resultado
 }
 
@@ -169,19 +175,10 @@ export default function FamososTimeline({ famosos }: FamososTimelineProps) {
     const controller = new AbortController()
 
     async function cargarWiki() {
-      // Cargar en lotes de CONCURRENCIA para no saturar el servidor
-      for (let i = 0; i < items.length; i += CONCURRENCIA) {
-        if (controller.signal.aborted) return
-        const lote = items.slice(i, i + CONCURRENCIA)
-        const parcial = await fetchLoteWiki(lote, controller.signal)
-        if (controller.signal.aborted) return
-        // Actualizar el mapa acumulando los nuevos resultados
-        setWiki((prev) => {
-          const next = new Map(prev)
-          parcial.forEach((v, k) => next.set(k, v))
-          return next
-        })
-      }
+      // Una sola petición POST trae las 50 personas de golpe (sin rate-limiting)
+      const datos = await fetchWikiBatch(items, controller.signal)
+      if (controller.signal.aborted) return
+      setWiki(datos)
     }
 
     cargarWiki()
