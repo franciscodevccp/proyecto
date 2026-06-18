@@ -1,5 +1,5 @@
 /**
- * middleware.ts
+ * proxy.ts (antes middleware.ts — convención renombrada en Next.js 16)
  * Autenticación para todos los endpoints internos de la API.
  *
  * Rutas públicas (sin autenticación): /api/public/*
@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
-export function middleware(req: NextRequest): NextResponse {
+export function proxy(req: NextRequest): NextResponse {
   const secret = process.env.INTERNAL_API_SECRET
 
   // Sin secreto configurado → modo desarrollo, omitir verificación

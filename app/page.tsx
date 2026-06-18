@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Toaster, toast } from 'react-hot-toast'
-import { Database, Table, ScrollText, History, Moon, Sun, BookOpen, X, BarChart2, Users, MapPin, ArrowRight } from 'lucide-react'
+import { Database, Table, ScrollText, History, Moon, Sun, BookOpen, X, BarChart2, Users, MapPin, ArrowRight, Boxes } from 'lucide-react'
 import Link from 'next/link'
 
 import FileUpload, { type ProcessResponse } from './components/FileUpload'
@@ -170,6 +170,13 @@ export default function Home() {
               className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
               Analytics
+            </Link>
+            <Link
+              href="/datawarehouse"
+              className="hidden sm:flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              <Boxes className="w-4 h-4" />
+              Data Warehouse
             </Link>
             <Link
               href={result ? `/reporte?batch=${result.batchId}&modulo=comunas` : '/reporte'}
