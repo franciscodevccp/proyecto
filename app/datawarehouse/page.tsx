@@ -12,7 +12,7 @@
  * (useDarkMode), Tailwind, lucide-react y el componente CodeBlock para el SQL.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Database, Boxes, ArrowLeft, Sun, Moon, CheckCircle2, Network, Table2,
@@ -385,9 +385,44 @@ function TablaCruces() {
 // Pestañas de operaciones OLAP
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Estado de la consulta en vivo contra el DW (SQLite, Nivel 3). */
+type EstadoDW = 'cargando' | 'ok' | 'vacio' | 'no_poblado' | 'error'
+
+/** Forma de la respuesta de /api/dw/query. */
+interface RespuestaDW {
+  ok: boolean
+  reason?: string
+  columnas?: string[]
+  filas?: Array<Record<string, unknown>>
+}
+
 function OlapTabs() {
   const [activa, setActiva] = useState<OperacionId>('principal')
+  const [estado, setEstado] = useState<EstadoDW>('cargando')
+  const [columnas, setColumnas] = useState<string[]>([])
+  const [filas, setFilas] = useState<Array<Record<string, unknown>>>([])
   const consulta = CONSULTAS_OLAP.find((c) => c.id === activa) ?? CONSULTAS_OLAP[0]
+
+  // Cada vez que cambia la operación, consulta el DW poblado y trae el resultado real.
+  useEffect(() => {
+    let cancelado = false
+    setEstado('cargando')
+    fetch(`/api/dw/query?op=${activa}`)
+      .then((r) => r.json() as Promise<RespuestaDW>)
+      .then((d) => {
+        if (cancelado) return
+        if (!d.ok) {
+          setEstado(d.reason === 'not_populated' ? 'no_poblado' : 'error')
+          return
+        }
+        const f = d.filas ?? []
+        setColumnas(d.columnas ?? [])
+        setFilas(f)
+        setEstado(f.length === 0 ? 'vacio' : 'ok')
+      })
+      .catch(() => { if (!cancelado) setEstado('error') })
+    return () => { cancelado = true }
+  }, [activa])
 
   return (
     <div className="space-y-4">
@@ -414,8 +449,72 @@ function OlapTabs() {
         )}
         <CodeBlock code={consulta.sql} language="sql" />
       </div>
+
+      <ResultadoEnVivo estado={estado} columnas={columnas} filas={filas} />
     </div>
   )
+}
+
+/** Tabla de resultados en vivo (o estado equivalente) de la consulta OLAP. */
+function ResultadoEnVivo({
+  estado, columnas, filas,
+}: {
+  estado: EstadoDW
+  columnas: string[]
+  filas: Array<Record<string, unknown>>
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Resultado en vivo</span>
+        {estado === 'ok' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300">DW poblado</span>}
+        {estado === 'no_poblado' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">DW no poblado</span>}
+      </div>
+
+      {estado === 'cargando' && <p className="text-sm text-gray-400">Consultando el DW…</p>}
+      {estado === 'no_poblado' && (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          El DW no está poblado en este entorno. Ejecuta{' '}
+          <code className="font-mono text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">pnpm etl</code>{' '}
+          donde haya acceso a la base operacional para ver los resultados reales.
+        </p>
+      )}
+      {estado === 'error' && <p className="text-sm text-red-500">No se pudo consultar el DW.</p>}
+      {estado === 'vacio' && <p className="text-sm text-gray-500 dark:text-gray-400">El DW está poblado pero la consulta no devolvió filas.</p>}
+      {estado === 'ok' && (
+        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+                {columnas.map((c) => (
+                  <th key={c} className="text-left py-2 px-3 font-mono text-xs font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filas.slice(0, 50).map((fila, i) => (
+                <tr key={i} className="border-b border-gray-100 dark:border-gray-800/50">
+                  {columnas.map((c) => (
+                    <td key={c} className="py-1.5 px-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{formatearValor(fila[c])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filas.length > 50 && (
+            <p className="text-xs text-gray-400 px-3 py-2">Mostrando 50 de {filas.length} filas.</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Formatea un valor de celda para mostrarlo en la tabla de resultados. */
+function formatearValor(v: unknown): string {
+  if (v === null || v === undefined) return '—'
+  if (typeof v === 'number' || typeof v === 'string') return String(v)
+  return JSON.stringify(v)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

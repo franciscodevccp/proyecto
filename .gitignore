@@ -46,4 +46,8 @@ next-env.d.ts
 # claude code — configuración local de tooling
 /.claude
 
+# data warehouse SQLite (se genera con `pnpm etl`, Nivel 3)
+/datawarehouse.db
+/datawarehouse.db-*
+
 
