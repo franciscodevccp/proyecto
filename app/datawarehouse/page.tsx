@@ -22,6 +22,7 @@ import { useDarkMode } from '../hooks/useDarkMode'
 import { APP_VERSION } from '../lib/version'
 import { CodeBlock } from '../components/CodeBlock'
 import { StarDiagram } from '../components/dw/StarDiagram'
+import { DataDictionary } from '../components/dw/DataDictionary'
 import {
   DECLARACION_DATASET, DIMENSIONES, MATRIZ_BUS, LINAJE, CRUCES, CONSULTAS_OLAP,
   FUENTES_SCD2, FACT_NORMALIZACION, FACT_CALIDAD_DIARIA, DIMENSIONES_CONFORMADAS,
@@ -122,6 +123,16 @@ export default function DataWarehousePage() {
           <StarDiagram />
         </Seccion>
 
+        {/* ── Diccionario de datos completo (vista estática, inline) ── */}
+        <Seccion id="diccionario" icono={Table2} titulo="Diccionario de datos" badge="Entregable 3">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Ficha completa de columnas de todas las tablas del modelo (tipo, nullabilidad,
+            clave, origen OLTP y descripción). El diagrama de arriba revela esto al hacer clic;
+            aquí está inline y siempre visible.
+          </p>
+          <DataDictionary />
+        </Seccion>
+
         {/* ── Toggle estrella ↔ copo de nieve ── */}
         <Seccion id="copo" icono={Snowflake} titulo="Estrella ↔ Copo de nieve" badge="Nivel 2">
           <SnowflakeToggle />
@@ -134,6 +145,21 @@ export default function DataWarehousePage() {
             son <strong>conformadas</strong> y permiten el análisis cruzado.
           </p>
           <MatrizBus />
+
+          {/* Justificación: por qué un solo hecho pese a los 3 procesos de negocio */}
+          <div className="mt-4 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900">
+            <p className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-1">
+              ¿Por qué una sola tabla de hechos?
+            </p>
+            <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed">
+              Aunque la Matriz de Bus muestra tres procesos de negocio, el modelo usa una sola tabla
+              de hechos (<code className="font-mono">FACT_NORMALIZACION</code>) porque los tres comparten
+              el mismo grano: un registro de entrada al pipeline ETL.{' '}
+              <code className="font-mono">DIM_MODULO</code> diferencia a qué proceso pertenece cada hecho,
+              y las dimensiones conformadas (<code className="font-mono">DIM_TIEMPO</code> y{' '}
+              <code className="font-mono">DIM_UBICACION</code>) permiten el análisis cruzado entre procesos.
+            </p>
+          </div>
         </Seccion>
 
         {/* ── Linaje OLTP → OLAP ── */}

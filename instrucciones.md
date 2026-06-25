@@ -1,6 +1,6 @@
 # COMUNAS_NORM — Instructivo Completo
-> Proyecto: Evaluación 2 - Arquitectura y Almacenamiento de Datos — INACAP
-> Stack: Next.js 14 · TypeScript · Prisma · PostgreSQL · Tailwind CSS
+> Proyecto: Evaluación 3 - Arquitectura y Almacenamiento de Datos — INACAP
+> Stack: Next.js 16.2.6 · TypeScript · Prisma · PostgreSQL · Tailwind CSS
 > Deploy: VPS Hostinger (Ubuntu 22.04) · PM2 · Nginx
 
 ---
@@ -43,39 +43,47 @@ Aplicación web para normalizar datasets de comunas chilenas (tabla `COMUNAS_NOR
 
 ## 2. Estructura del Proyecto
 
+> El proyecto usa el App Router de Next.js con la carpeta `app/` **en la raíz** (no en
+> `src/`). Cada módulo del sistema (comunas, famosos, lugares) tiene su propia página, sus
+> componentes y sus endpoints; el Data Warehouse vive en `app/datawarehouse` + `scripts/`.
+
 ```
-comunas-norm/
+proyecto/
 ├── prisma/
-│   └── schema.prisma          # Modelos de base de datos
-├── src/
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── process/
-│   │   │   │   └── route.ts   # POST: procesa y normaliza el archivo
-│   │   │   ├── comunas/
-│   │   │   │   └── route.ts   # GET: obtiene comunas normalizadas
-│   │   │   ├── logs/
-│   │   │   │   └── route.ts   # GET: obtiene log de cambios
-│   │   │   └── download/
-│   │   │       └── route.ts   # GET: descarga CSV o TXT del log
-│   │   ├── globals.css
-│   │   ├── layout.tsx
-│   │   └── page.tsx           # Página principal con tabs
-│   ├── components/
-│   │   ├── FileUpload.tsx     # Drag & drop para cargar archivo
-│   │   ├── StatsPanel.tsx     # Cards con estadísticas del proceso
-│   │   ├── DataTable.tsx      # Tabla paginada de resultados
-│   │   └── LogViewer.tsx      # Visor del log de cambios
+│   └── schema.prisma          # Modelos: Batch/Comuna/LogEntry, FamosoBatch/Famoso,
+│                              #          LugarBatch/Lugar/Georeferencia/Direccion
+├── app/                       # App Router (en la RAÍZ, sin src/)
+│   ├── page.tsx               # Dashboard del módulo Comunas (tabs + stats + gráficos)
+│   ├── famosos/page.tsx       # Módulo Famosos (normalización + timeline + fotos)
+│   ├── lugares/page.tsx       # Módulo Lugares (tabla + mapa Leaflet con clústeres)
+│   ├── datawarehouse/page.tsx # Data Warehouse: estrella, diccionario, OLAP en vivo
+│   ├── analytics/page.tsx     # Analytics agregados (tendencias, gráficos Recharts)
+│   ├── reporte/page.tsx       # Reporte / exportables del procesamiento
+│   ├── api-docs/page.tsx      # Documentación de la API pública
+│   ├── layout.tsx
+│   ├── globals.css
+│   ├── api/                   # Endpoints (route handlers)
+│   │   ├── process/           # POST: normaliza comunas
+│   │   ├── comunas/  logs/  download/   # consultas y descargas de comunas
+│   │   ├── famosos/  lugares/           # endpoints de los otros 2 módulos
+│   │   ├── analytics/  reporte/  wiki/  # agregados, reporte e imágenes Wikipedia
+│   │   ├── public/normalize/            # API pública de normalización
+│   │   └── dw/query/         # GET: ejecuta las consultas OLAP contra el DW (SQLite)
+│   ├── components/            # Componentes de UI (FileUpload, tablas, gráficos…)
+│   │   └── dw/                # Componentes del DW: StarDiagram, DataDictionary
 │   └── lib/
-│       ├── normalizer.ts      # Lógica de normalización de datos
-│       └── prisma.ts          # Instancia del cliente Prisma
+│       ├── normalizer.ts      # Lógica de normalización de comunas
+│       ├── dw-model.ts        # FUENTE ÚNICA DE VERDAD del modelo dimensional del DW
+│       ├── prisma.ts          # Instancia del cliente Prisma
+│       └── …                  # parsers, quality-score, etl-rules, etc.
+├── scripts/
+│   └── etl-dw.ts              # ETL del DW: lee PostgreSQL (Prisma) → puebla SQLite
 ├── .env                       # Variables de entorno (NO subir a Git)
 ├── .env.example               # Plantilla de variables (SÍ subir a Git)
 ├── .gitignore
-├── INSTRUCTIVO.md             # Este archivo
+├── instrucciones.md           # Este archivo
 ├── next.config.ts
 ├── package.json
-├── tailwind.config.ts
 └── tsconfig.json
 ```
 

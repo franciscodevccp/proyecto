@@ -199,7 +199,7 @@ export const FACT_NORMALIZACION: Tabla = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Las 7 dimensiones (+1 opcional)
+// 2. Las 7 dimensiones
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 1. DIM_TIEMPO — dimensión conformada. */
@@ -321,22 +321,6 @@ export const DIM_FORMATO_FECHA: Tabla = {
     { nombre: 'codigo', tipo: 'VARCHAR(30)', nullable: false, descripcion: 'Código del formato.', origenOLTP: 'detectarFormato()' },
     { nombre: 'etiqueta', tipo: 'VARCHAR(50)', nullable: false, descripcion: "'D de Mes de AAAA' | 'Mes D, AAAA' | 'AAAA-MM-DD' | 'No aplica'…", origenOLTP: 'detectarFormato(Famoso.fechaOriginal)' },
     { nombre: 'ejemplo', tipo: 'VARCHAR(50)', nullable: true, descripcion: 'Ejemplo del formato.', origenOLTP: 'Derivado' },
-  ],
-}
-
-/** 8 (opcional). DIM_REGLA_ETL — perfil de reglas aplicadas. */
-export const DIM_REGLA_ETL: Tabla = {
-  id: 'dim_regla_etl',
-  nombre: 'DIM_REGLA_ETL',
-  tipo: 'dimension',
-  titulo: 'Regla ETL (opcional)',
-  descripcion:
-    'Perfil de reglas aplicadas (trim, removeAccents, titleCase, fuzzyCorrect…). ' +
-    'Rigurosamente sería una tabla puente (N:M); aquí se simplifica como dimensión de perfil.',
-  columnas: [
-    { nombre: 'id_regla_etl', tipo: 'INT', nullable: false, esPK: true, descripcion: 'Clave subrogada del perfil.', origenOLTP: 'Derivado' },
-    { nombre: 'perfil', tipo: 'VARCHAR(100)', nullable: false, descripcion: 'Combinación de reglas activas.', origenOLTP: 'etl-rules.ts (AVAILABLE_RULES / resolveRuleSet)' },
-    { nombre: 'usa_fuzzy', tipo: 'SMALLINT', nullable: false, descripcion: '1 si incluyó corrección difusa (Levenshtein).', origenOLTP: 'etl-rules.ts (fuzzyCorrect)' },
   ],
 }
 

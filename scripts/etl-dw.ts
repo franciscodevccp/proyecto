@@ -387,9 +387,41 @@ async function main(): Promise<void> {
   insertarHechos(hechos)
 
   // ── fact_calidad_diaria: snapshot agregado por módulo × día ──
+  // COUNT(*), SUM(es_duplicado) y SUM(fue_normalizado) sí se derivan bien de
+  // fact_normalizacion; total_no_encontrados y score_promedio NO (no existen por
+  // registro), así que aquí entran como 0 / NULL y se corrigen abajo solo para Comunas.
   db.exec(`INSERT INTO fact_calidad_diaria (id_tiempo, id_modulo, registros_procesados, total_duplicados, total_normalizados, total_no_encontrados, score_promedio)
     SELECT id_tiempo, id_modulo, COUNT(*), SUM(es_duplicado), SUM(fue_normalizado), 0, NULL
     FROM fact_normalizacion GROUP BY id_tiempo, id_modulo`)
+
+  // Medidas exclusivas del módulo Comunas (id_modulo = 1): total_no_encontrados y
+  // score_promedio se calculan desde los Batch de comunas —las únicas jerarquías que
+  // persisten noEncontrados y qualityAfter— agregando por día (id_tiempo). Famosos y
+  // Lugares no tienen estos datos: quedan en 0 / NULL (no se inventan valores).
+  interface AggCalidad {
+    noEncontrados: number // SUMA de Batch.noEncontrados del día
+    sumaScore: number     // acumulador para promediar qualityAfter
+    nScore: number        // cantidad de batches con qualityAfter no-null
+  }
+  const calidadPorDia = new Map<number, AggCalidad>()
+  for (const b of batchesComunas) {
+    const idt = describirTiempo(b.createdAt).idTiempo
+    const agg = calidadPorDia.get(idt) ?? { noEncontrados: 0, sumaScore: 0, nScore: 0 }
+    agg.noEncontrados += b.noEncontrados
+    if (b.qualityAfter != null) {
+      agg.sumaScore += b.qualityAfter
+      agg.nScore += 1
+    }
+    calidadPorDia.set(idt, agg)
+  }
+  const updCalidad = db.prepare(
+    'UPDATE fact_calidad_diaria SET total_no_encontrados = ?, score_promedio = ? WHERE id_tiempo = ? AND id_modulo = ?'
+  )
+  for (const [idt, agg] of calidadPorDia) {
+    // Promedio de qualityAfter ignorando los null; redondeado a 2 decimales (DECIMAL(5,2)).
+    const scorePromedio = agg.nScore > 0 ? Math.round((agg.sumaScore / agg.nScore) * 100) / 100 : null
+    updCalidad.run(agg.noEncontrados, scorePromedio, idt, moduloId.Comunas)
+  }
 
   const total = db.prepare('SELECT COUNT(*) AS n FROM fact_normalizacion').get() as { n: number }
   console.log(`[ETL] Hechos cargados: ${total.n}`)
