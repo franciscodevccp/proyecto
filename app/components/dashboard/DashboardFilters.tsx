@@ -3,9 +3,10 @@
 /**
  * DashboardFilters.tsx
  * Barra de filtros del dashboard. Los desplegables se pueblan con datos REALES
- * del DW (operación dashboard_filtros). Al cambiar un filtro se actualiza la
- * querystring y se navega: el server component vuelve a calcular KPIs, gráfico
- * y ranking de forma coherente (no hay fetch manual ni estado duplicado).
+ * del DW (operación dashboard_filtros) y usan componentes de diseño propio
+ * (FancySelect / DatePicker), no controles nativos. Al cambiar un filtro se
+ * actualiza la querystring y se navega: el server component vuelve a calcular
+ * KPIs, gráfico y ranking de forma coherente (sin fetch manual ni estado duplicado).
  *
  * Región/País son contextuales: región solo aplica al módulo Comunas y país al
  * módulo Lugares; el resto del tiempo el control aparece deshabilitado.
@@ -14,6 +15,8 @@
 import { useRouter, usePathname } from 'next/navigation'
 import { Filter, X } from 'lucide-react'
 import type { OpcionesFiltro, FiltrosDashboard } from '../../lib/dw-sqlite'
+import { FancySelect, type OpcionSelect } from './FancySelect'
+import { DatePicker } from './DatePicker'
 
 interface Props {
   opciones: OpcionesFiltro
@@ -24,12 +27,23 @@ export function DashboardFilters({ opciones, filtros }: Props) {
   const router = useRouter()
   const pathname = usePathname()
 
-  // Ids de Comunas/Lugares (para habilitar Región/País) resueltos por nombre.
-  const idComunas = opciones.modulos.find((m) => /comuna/i.test(m.nombre))?.id
-  const idLugares = opciones.modulos.find((m) => /lugar/i.test(m.nombre))?.id
-
-  const regionHabilitada = filtros.id_modulo !== undefined && filtros.id_modulo === idComunas
-  const paisHabilitado = filtros.id_modulo !== undefined && filtros.id_modulo === idLugares
+  // Opciones de cada desplegable (siempre con la opción "Todos/Todas" al inicio).
+  const optModulos: OpcionSelect[] = [
+    { value: '', label: 'Todos' },
+    ...opciones.modulos.map((m) => ({ value: String(m.id), label: m.nombre })),
+  ]
+  const optFuentes: OpcionSelect[] = [
+    { value: '', label: 'Todas' },
+    ...opciones.fuentes.map((s) => ({ value: String(s.id), label: s.nombre })),
+  ]
+  const optRegiones: OpcionSelect[] = [
+    { value: '', label: 'Todas' },
+    ...opciones.regiones.map((r) => ({ value: r, label: r })),
+  ]
+  const optPaises: OpcionSelect[] = [
+    { value: '', label: 'Todos' },
+    ...opciones.paises.map((p) => ({ value: p, label: p })),
+  ]
 
   /** Aplica cambios sobre el estado actual y navega con la nueva querystring. */
   function aplicar(cambios: Record<string, string | undefined>) {
@@ -54,11 +68,6 @@ export function DashboardFilters({ opciones, filtros }: Props) {
     filtros.id_modulo !== undefined || filtros.id_fuente !== undefined ||
     !!filtros.fecha_desde || !!filtros.fecha_hasta || !!filtros.region || !!filtros.pais
 
-  const inputCls =
-    'rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 ' +
-    'text-gray-700 dark:text-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed'
-
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -75,86 +84,60 @@ export function DashboardFilters({ opciones, filtros }: Props) {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        {/* Módulo — al cambiarlo se limpian región y país (dejan de aplicar) */}
+        {/* Módulo */}
         <Campo label="Módulo">
-          <select
-            className={inputCls}
+          <FancySelect
+            ariaLabel="Filtrar por módulo"
             value={filtros.id_modulo?.toString() ?? ''}
-            onChange={(e) => aplicar({ id_modulo: e.target.value || undefined, region: undefined, pais: undefined })}
-          >
-            <option value="">Todos</option>
-            {opciones.modulos.map((m) => (
-              <option key={m.id} value={m.id}>{m.nombre}</option>
-            ))}
-          </select>
+            options={optModulos}
+            onChange={(v) => aplicar({ id_modulo: v || undefined })}
+          />
         </Campo>
 
         {/* Fuente */}
         <Campo label="Fuente">
-          <select
-            className={inputCls}
+          <FancySelect
+            ariaLabel="Filtrar por fuente"
             value={filtros.id_fuente?.toString() ?? ''}
-            onChange={(e) => aplicar({ id_fuente: e.target.value || undefined })}
-          >
-            <option value="">Todas</option>
-            {opciones.fuentes.map((s) => (
-              <option key={s.id} value={s.id}>{s.nombre}</option>
-            ))}
-          </select>
+            options={optFuentes}
+            onChange={(v) => aplicar({ id_fuente: v || undefined })}
+          />
         </Campo>
 
         {/* Rango de fechas */}
         <Campo label="Desde">
-          <input
-            type="date"
-            className={inputCls}
+          <DatePicker
             value={filtros.fecha_desde ?? ''}
-            min={opciones.fechaMin ?? undefined}
-            max={opciones.fechaMax ?? undefined}
-            onChange={(e) => aplicar({ fecha_desde: e.target.value || undefined })}
+            initialMonth={opciones.fechaMax ?? undefined}
+            onChange={(v) => aplicar({ fecha_desde: v || undefined })}
           />
         </Campo>
         <Campo label="Hasta">
-          <input
-            type="date"
-            className={inputCls}
+          <DatePicker
             value={filtros.fecha_hasta ?? ''}
-            min={opciones.fechaMin ?? undefined}
-            max={opciones.fechaMax ?? undefined}
-            onChange={(e) => aplicar({ fecha_hasta: e.target.value || undefined })}
+            initialMonth={opciones.fechaMax ?? undefined}
+            onChange={(v) => aplicar({ fecha_hasta: v || undefined })}
           />
         </Campo>
 
-        {/* Región — solo módulo Comunas */}
+        {/* Región (comunas chilenas) */}
         <Campo label="Región">
-          <select
-            className={inputCls}
-            disabled={!regionHabilitada}
-            title={regionHabilitada ? undefined : 'Aplica al módulo Comunas'}
+          <FancySelect
+            ariaLabel="Filtrar por región"
             value={filtros.region ?? ''}
-            onChange={(e) => aplicar({ region: e.target.value || undefined })}
-          >
-            <option value="">Todas</option>
-            {opciones.regiones.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
+            options={optRegiones}
+            onChange={(v) => aplicar({ region: v || undefined })}
+          />
         </Campo>
 
-        {/* País — solo módulo Lugares */}
+        {/* País (lugares) */}
         <Campo label="País">
-          <select
-            className={inputCls}
-            disabled={!paisHabilitado}
-            title={paisHabilitado ? undefined : 'Aplica al módulo Lugares'}
+          <FancySelect
+            ariaLabel="Filtrar por país"
             value={filtros.pais ?? ''}
-            onChange={(e) => aplicar({ pais: e.target.value || undefined })}
-          >
-            <option value="">Todos</option>
-            {opciones.paises.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
+            options={optPaises}
+            onChange={(v) => aplicar({ pais: v || undefined })}
+          />
         </Campo>
       </div>
     </div>
@@ -164,9 +147,9 @@ export function DashboardFilters({ opciones, filtros }: Props) {
 /** Envoltorio etiqueta + control para la barra de filtros. */
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1">
       <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</span>
       {children}
-    </label>
+    </div>
   )
 }
